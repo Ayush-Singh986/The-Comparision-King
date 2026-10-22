@@ -11,12 +11,12 @@ Northstar is a cloud e-commerce recommendation project. It records anonymous sho
 *AWS, Terraform, Python, FastAPI, PostgreSQL, Amazon Bedrock, JavaScript*
 
 - Built a storefront API that serves a PostgreSQL-backed catalog, assigns anonymous HTTP-only shopper sessions, and records product views, searches, recommendation impressions, and clicks.
-- Implemented catalog-constrained Amazon Bedrock recommendations using recent shopper activity, with a five-minute in-process cache and a database-enforced limit of eight recommendation requests per session per minute.
-- Designed a trusted order-ingestion API using timestamped HMAC-SHA256 signatures, replay-window checks, product validation, unique event IDs, and transactional, idempotent purchase-event persistence.
-- Defined a Terraform AWS reference architecture with CloudFront/WAF, an Application Load Balancer, EC2 Auto Scaling, private Multi-AZ RDS PostgreSQL, Cognito, Bedrock, Lambda, and CloudWatch.
-- Added automated Python tests, Python and JavaScript syntax checks, and Terraform formatting/validation to GitHub Actions.
+- Implemented contextual Amazon Bedrock recommendations grounded in recent shopper activity and the store catalog, with response validation and a short-lived cache.
+- Built a signed, idempotent server-to-server order-event endpoint so purchase analytics depend on trusted order events rather than browser claims.
+- Defined a cost-conscious Terraform portfolio deployment with CloudFront/WAF, an Application Load Balancer, EC2 Auto Scaling, private single-AZ RDS PostgreSQL, Cognito, Bedrock, Lambda, and CloudWatch.
+- Added CI checks for the backend test suite, Python and JavaScript syntax, and Terraform formatting/validation.
 
-**Use accurate project status:** the code, infrastructure configuration, and CI are in the repository; Terraform was formatted and validated locally. The AWS stack has **not** been applied, and no live sales, conversion, latency, or cost improvement has been measured. Do not describe it as serving production customers.
+**Impact honesty:** this is an implemented portfolio prototype and AWS reference deployment, not a live commerce service. The AWS stack has not been applied, and there are no production users, controlled experiments, or measured sales, conversion, retention, latency, or cost results. Do not attach business-impact percentages to it yet. The default AWS sizing is cost-conscious for a portfolio demo and intentionally sacrifices multi-AZ failover.
 
 ## What problem it addresses
 
@@ -36,18 +36,18 @@ This demonstrates a potential business benefit—not a proven sales result. The 
 
 ## Business impact: what is real vs. what is a goal
 
-### Delivered in the project
+### What the prototype demonstrates
 
-- **More relevant discovery:** recommendations use the visitor's recorded interests instead of only a static featured-products list.
-- **Catalog correctness:** recommendation results are checked against the product catalog so the model cannot introduce an unknown product.
-- **Fewer unnecessary model calls:** visitors without history receive catalog-based picks, and repeated requests can reuse a short-lived cached result. This is a cost-control design; savings have not been measured.
-- **More trustworthy purchase analytics:** only the signed server-to-server order path can create purchase events, and duplicate deliveries are idempotent.
-- **Operational visibility:** activity events and service telemetry are structured for monitoring through CloudWatch.
-- **Scalable deployment design:** the Terraform reference stack defines load-balanced EC2 capacity and a private Multi-AZ database. It has not yet been deployed or load-tested.
+- **Personalized discovery flow:** the prototype captures shopper activity and uses it as recommendation context. Whether that improves discovery or sales is untested.
+- **Catalog-grounded output:** model responses are checked against the available products before they are returned.
+- **Cost-control mechanisms:** first-visit recommendations avoid a model call and repeated results can be cached. Overall savings depend on real traffic and cache-hit rate and have not been measured.
+- **Trusted purchase-event design:** the signed server-to-server path can record order events idempotently. No payment provider or real checkout is connected.
+- **Cost-aware deployment design:** the defaults use one NAT Gateway, one minimum EC2 instance, and a small single-AZ database to reduce idle baseline costs. This is a design choice, not a measured bill reduction, and it is not the high-availability configuration for production.
+- **Operational and deployment design:** Terraform and CloudWatch configuration describe a deployable AWS stack. The stack has not been provisioned or load-tested.
 
 ### Measure before claiming commercial results
 
-There is no measured conversion uplift, revenue increase, customer-retention improvement, or operating-cost reduction yet. After a real deployment and checkout integration, collect a baseline and compare a randomized recommendation treatment group with a control group. Useful measures include:
+There is no measured percentage impact to report today. Percentages such as “increased sales by 20%” or “reduced costs by 30%” would be fabricated without live data and a baseline. After a real deployment and checkout integration, compare a randomized recommendation treatment group with a control group. Useful measures include:
 
 | Measure | Example definition | Why it matters |
 | --- | --- | --- |
@@ -58,7 +58,11 @@ There is no measured conversion uplift, revenue increase, customer-retention imp
 | Model/cache efficiency | Bedrock calls, cache-hit rate, and model spend per session | Tests whether caching and the no-history path reduce cost. |
 | Reliability | API error rate and successful order-event processing | Checks that browsing and order signals are dependable. |
 
-Use a clear observation window, adequate sample size, and a control group. Report the observed period, sample size, and measured result; do not attribute a change to recommendations without a suitable comparison.
+For measured relative uplift, use:
+
+`relative change (%) = (treatment metric - control metric) / control metric × 100`
+
+Only after measurement, a resume statement could read: “Improved recommendation click-through rate by **X% relative** versus a randomized control across **N** eligible sessions over **T** weeks.” Replace every placeholder with experiment results and identify the observation period. For cost, compare Bedrock spend per eligible session; for latency, report the measured percentile and control comparison. If the project remains undeployed, use concrete implementation scope instead of a business-impact percentage.
 
 ## Interview talking points
 

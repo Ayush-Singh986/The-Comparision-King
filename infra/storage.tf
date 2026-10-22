@@ -9,8 +9,8 @@ resource "aws_db_instance" "main" {
   engine                                = "postgres"
   engine_version                        = "16"
   instance_class                        = var.database_instance_class
-  allocated_storage                     = 50
-  max_allocated_storage                 = 200
+  allocated_storage                     = 20
+  max_allocated_storage                 = 50
   storage_type                          = "gp3"
   storage_encrypted                     = true
   db_name                               = "northstar"
@@ -18,9 +18,9 @@ resource "aws_db_instance" "main" {
   manage_master_user_password           = true
   db_subnet_group_name                  = aws_db_subnet_group.main.name
   vpc_security_group_ids                = [aws_security_group.database.id]
-  multi_az                              = true
+  multi_az                              = false
   publicly_accessible                   = false
-  backup_retention_period               = 14
+  backup_retention_period               = 7
   backup_window                         = "03:00-04:00"
   maintenance_window                    = "sun:04:00-sun:05:00"
   auto_minor_version_upgrade            = true
@@ -30,8 +30,7 @@ resource "aws_db_instance" "main" {
   copy_tags_to_snapshot                 = true
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  monitoring_interval                   = 60
-  monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
+  monitoring_interval                   = 0
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 }
 
@@ -39,25 +38,6 @@ resource "aws_cloudwatch_log_group" "database" {
   for_each          = toset(["postgresql", "upgrade"])
   name              = "/aws/rds/instance/${var.project_name}/${each.value}"
   retention_in_days = 30
-}
-
-resource "aws_iam_role" "rds_monitoring" {
-  name = "${var.project_name}-rds-monitoring"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "monitoring.rds.amazonaws.com"
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "rds_monitoring" {
-  role       = aws_iam_role.rds_monitoring.name
-  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
 resource "random_password" "application_db" {

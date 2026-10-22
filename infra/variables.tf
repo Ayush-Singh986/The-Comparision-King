@@ -27,9 +27,9 @@ variable "instance_type" {
 }
 
 variable "database_instance_class" {
-  description = "RDS PostgreSQL instance class."
+  description = "Cost-conscious RDS PostgreSQL instance class for the portfolio deployment."
   type        = string
-  default     = "db.t4g.medium"
+  default     = "db.t4g.micro"
 }
 
 variable "alert_email" {

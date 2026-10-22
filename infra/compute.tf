@@ -119,7 +119,7 @@ resource "aws_launch_template" "app" {
   }
 
   monitoring {
-    enabled = true
+    enabled = false
   }
 
   tag_specifications {
@@ -132,9 +132,9 @@ resource "aws_launch_template" "app" {
 
 resource "aws_autoscaling_group" "app" {
   name                      = "${var.project_name}-app"
-  min_size                  = 2
-  max_size                  = 6
-  desired_capacity          = 2
+  min_size                  = 1
+  max_size                  = 2
+  desired_capacity          = 1
   vpc_zone_identifier       = [for subnet in aws_subnet.application : subnet.id]
   target_group_arns         = [aws_lb_target_group.app.arn]
   health_check_type         = "ELB"
