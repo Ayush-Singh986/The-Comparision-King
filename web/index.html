@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8f7f3" />
+    <meta name="description" content="Shop thoughtfully chosen camera and outdoor essentials at Northstar Goods." />
+    <title>Northstar Goods — Gear for the way out there</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./store.css" />
+    <script src="./store.js" defer></script>
+  </head>
+  <body data-page="home">
+    <div class="announcement">A little more outside. Free shipping on demo orders over $100.</div>
+    <header class="store-header">
+      <a class="store-logo" href="./" aria-label="Northstar Goods home"><span class="logo-word">northstar<span>.</span></span><small>GOODS FOR THE OUT THERE</small></a>
+      <nav class="store-nav" aria-label="Shop">
+        <a href="#shop" data-category-link="all">Shop all</a>
+        <a href="#shop" data-category-link="Camera gear">Photography</a>
+        <a href="#shop" data-category-link="Outdoor">Outdoor</a>
+        <a href="#shop" data-category-link="Accessories">Accessories</a>
+      </nav>
+      <div class="header-actions">
+        <a class="admin-link" href="./dashboard.html">Store insights <span aria-hidden="true">↗</span></a>
+        <a class="cart-link" href="./cart.html" aria-label="Shopping bag"><span aria-hidden="true">▱</span> Bag <b data-cart-count>0</b></a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> FIND YOUR NEXT OUTSIDE</p>
+          <h1>Good gear.<br />Great <em>stories.</em></h1>
+          <p class="hero-text">Thoughtful essentials for the trails you take, the places you find, and everything worth remembering.</p>
+          <a class="button button-dark" href="#shop">Explore the collection <span aria-hidden="true">→</span></a>
+          <div class="hero-proof"><span class="proof-avatars" aria-hidden="true"><i>J</i><i>M</i><i>A</i></span><span><strong>Made for going further</strong><small>Curated by people who get outside.</small></span></div>
+        </div>
+        <div class="hero-art" aria-label="A camera and outdoor gear ready for an adventure">
+          <div class="sun-disc"></div><span class="hero-spark spark-one">✳</span><span class="hero-spark spark-two">✳</span>
+        <img class="hero-product hero-camera" src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&amp;fit=crop&amp;w=520&amp;q=85" alt="" /><img class="hero-product hero-pack" src="https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&amp;fit=crop&amp;w=520&amp;q=85" alt="" />
+          <span class="hero-sticker">TAKE<br />THE<br /><b>LONG WAY</b></span>
+          <div class="hero-art-caption"><span>FIELD NOTES — 01</span><span>THE WEEKEND KIT</span></div>
+        </div>
+      </section>
+
+      <section class="benefit-strip" aria-label="Store benefits">
+        <span><b>✳</b> Gear picked with purpose</span><i></i><span><b>↗</b> Made for the long way round</span><i></i><span><b>⌁</b> Helpful recommendations as you explore</span>
+      </section>
+
+      <section class="shop-section" id="shop">
+        <div class="section-topline"><span>THE NORTHSTAR COLLECTION</span><span>01 — 18 PIECES</span></div>
+        <div class="shop-heading">
+          <div><h2>Find your kind of outside.</h2><p>Good gear has a way of finding its person.</p></div>
+          <label class="shop-search"><span aria-hidden="true">⌕</span><input id="store-search" type="search" placeholder="Try “camera” or “trail”" aria-label="Search products" /><kbd>⌘ K</kbd></label>
+        </div>
+        <div class="shop-controls">
+          <div class="category-tabs" role="group" aria-label="Filter products">
+            <button class="category-tab is-active" type="button" data-category="all">All gear <span>18</span></button>
+            <button class="category-tab" type="button" data-category="Camera gear">Photography</button>
+            <button class="category-tab" type="button" data-category="Outdoor">Outdoor</button>
+            <button class="category-tab" type="button" data-category="Accessories">Accessories</button>
+          </div>
+          <label class="sort-control">Sort <select id="store-sort" aria-label="Sort products"><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="rating">Top rated</option></select></label>
+        </div>
+        <div class="store-product-grid" id="store-products" aria-live="polite"></div>
+        <p class="store-empty" id="store-empty" hidden>No gear found. Try another search or category.</p>
+      </section>
+
+      <section class="recommend-section" id="for-you">
+        <div class="recommend-copy"><p class="eyebrow"><span></span> A GOOD PLACE TO START</p><h2>A few things<br />you might <em>love.</em></h2><p>As you explore, we use what you look at to find gear that fits. This demo remembers your recent views on this device.</p><a href="#shop" data-show-all>See the whole collection <span aria-hidden="true">→</span></a></div>
+        <div class="recommend-products" id="store-recommendations"></div>
+      </section>
+
+      <section class="story-strip"><span class="story-mark">N.</span><p>Less scrolling. More <em>out there.</em></p><a href="#shop">Find your next favorite <span aria-hidden="true">→</span></a></section>
+    </main>
+
+    <footer class="store-footer"><a class="store-logo" href="./"><span class="logo-word">northstar<span>.</span></span><small>GOODS FOR THE OUT THERE</small></a><span>Thoughtfully picked. Happily used.</span><a href="./dashboard.html">Store insights <span aria-hidden="true">↗</span></a></footer>
+    <div class="store-toast" id="store-toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

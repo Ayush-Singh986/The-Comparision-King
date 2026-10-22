@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+.qodo/
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.DS_Store
+
+# Terraform state and local deployment configuration can contain secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+backend.hcl
+crash.log

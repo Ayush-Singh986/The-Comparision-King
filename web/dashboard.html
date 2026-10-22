@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f6f2" />
+    <meta name="description" content="A real-time commerce intelligence dashboard for personalized product recommendations." />
+    <title>Northstar — Commerce intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./config.js"></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="./index.html" aria-label="Northstar storefront">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>northstar<span class="brand-period">.</span></span>
+        </a>
+
+        <div class="store-switcher">
+          <span class="store-avatar">N</span>
+          <span class="store-copy"><strong>Northstar Goods</strong><small>Commerce workspace</small></span>
+          <span class="switch-chevron" aria-hidden="true">⌄</span>
+        </div>
+
+        <div class="nav-caption">WORKSPACE</div>
+        <nav class="main-nav" aria-label="Main navigation">
+          <a class="nav-link" href="./index.html"><span class="nav-icon icon-overview" aria-hidden="true"></span>Shop storefront</a>
+          <a class="nav-link is-active" href="#overview" data-nav="overview"><span class="nav-icon icon-overview" aria-hidden="true"></span>Overview</a>
+          <a class="nav-link" href="#recommendations" data-nav="recommendations"><span class="nav-icon icon-spark" aria-hidden="true"></span>Recommendations<span class="nav-badge" id="nav-count">18</span></a>
+          <a class="nav-link" href="#customers" data-nav="customers"><span class="nav-icon icon-people" aria-hidden="true"></span>Customers</a>
+          <a class="nav-link" href="#trends" data-nav="trends"><span class="nav-icon icon-trend" aria-hidden="true"></span>Trending products</a>
+          <a class="nav-link" href="#activity" data-nav="activity"><span class="nav-icon icon-activity" aria-hidden="true"></span>Event activity</a>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="aws-status" id="aws-status"><span class="pulse-dot"></span><span><strong id="aws-status-title">Demo environment</strong><small id="aws-status-detail">AWS services simulated</small></span></div>
+          <div class="profile">
+            <span class="profile-avatar">AM</span>
+            <span class="profile-copy"><strong>Alex Morgan</strong><small>Store administrator</small></span>
+            <button class="more-button" aria-label="More account options">···</button>
+          </div>
+        </div>
+      </aside>
+
+      <main id="overview" class="main-content">
+        <header class="topbar">
+          <div class="breadcrumbs"><span>Northstar Goods</span><span class="crumb-slash">/</span><strong id="breadcrumb-title">Overview</strong></div>
+          <div class="topbar-right">
+            <span class="demo-chip" id="environment-chip"><span class="pulse-dot"></span> SAMPLE DATA</span>
+            <button class="date-button" type="button"><span class="calendar-icon" aria-hidden="true"></span>Last 7 days <span class="switch-chevron">⌄</span></button>
+            <button class="auth-button" id="auth-button" type="button" hidden>Sign in</button>
+            <button class="avatar-small" id="account-button" type="button" aria-label="Sign in">AM</button>
+          </div>
+        </header>
+
+        <div class="page-content">
+          <section class="welcome-row">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-line"></span><span id="current-date"></span></div>
+              <h1>Your store, in sync<span class="period">.</span></h1>
+              <p class="subtitle">Turn real-time customer signals into products people actually want.</p>
+            </div>
+            <button class="button button-primary" id="refresh-recommendations" type="button"><span class="refresh-icon" aria-hidden="true">↻</span> Refresh recommendations</button>
+          </section>
+
+          <section class="metrics-grid" aria-label="Store performance">
+            <article class="metric-card">
+              <div class="metric-heading"><span>Customer events</span><span class="metric-symbol symbol-green" aria-hidden="true">◉</span></div>
+              <div class="metric-number" id="metric-events">12,486</div>
+              <div class="metric-foot"><span class="metric-change">LIVE</span><span>last 7 days</span></div>
+              <div class="mini-sparkline sparkline-green" aria-hidden="true"><svg viewBox="0 0 120 28"><path d="M1 22 15 19 28 21 42 13 56 17 70 9 84 12 98 4 119 7" /></svg></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-heading"><span>Recommendation CTR</span><span class="metric-symbol symbol-violet" aria-hidden="true">↗</span></div>
+              <div class="metric-number"><span id="metric-ctr">8.42</span><span class="number-unit">%</span></div>
+              <div class="metric-foot"><span class="metric-change">CLICKS / IMPRESSIONS</span><span>last 7 days</span></div>
+              <div class="mini-sparkline sparkline-violet" aria-hidden="true"><svg viewBox="0 0 120 28"><path d="M1 22 15 16 28 19 42 12 56 15 70 10 84 14 98 6 119 4" /></svg></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-heading"><span>Products trending</span><span class="metric-symbol symbol-orange" aria-hidden="true">↗</span></div>
+              <div class="metric-number" id="metric-products">18</div>
+              <div class="metric-foot"><span class="trend-label">CATALOG</span><span>available to recommend</span></div>
+              <div class="metric-foot-note">Top category: <strong id="metric-top-category">Camera gear</strong></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-heading"><span>Avg. response time</span><span class="metric-symbol symbol-blue" aria-hidden="true">◷</span></div>
+              <div class="metric-number"><span id="metric-latency">142</span><span class="number-unit">ms</span></div>
+              <div class="metric-foot"><span class="healthy-label"><span class="tiny-dot"></span> Healthy</span><span>Bedrock + cache</span></div>
+              <div class="metric-foot-note">Instance cache hit rate <strong id="metric-cache-hit">64%</strong></div>
+            </article>
+          </section>
+
+          <section class="content-grid">
+            <article id="activity" class="panel activity-panel">
+              <div class="panel-heading">
+                <div><h2>Customer activity</h2><p>Signals that shape your recommendations.</p></div>
+                <div class="segmented-control" role="group" aria-label="Activity time range">
+                  <button class="segment is-selected" type="button" data-range="7">7 days</button>
+                  <button class="segment" type="button" data-range="30">30 days</button>
+                </div>
+              </div>
+              <div class="activity-summary"><strong id="activity-total">12,486</strong><span>interactions tracked</span><span class="summary-divider"></span><span class="activity-legend"><i></i>Product views</span><span class="activity-legend legend-purchases"><i></i>Purchases</span></div>
+              <div class="chart" role="img" aria-label="Customer product views and purchases over the last seven days">
+                <div class="chart-y-axis"><span>4k</span><span>3k</span><span>2k</span><span>1k</span><span>0</span></div>
+                <div class="chart-main">
+                  <div class="chart-guides" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                  <div id="activity-bars" class="bar-groups">
+                    <div class="bar-group"><div class="bar-pair"><i style="height:54%"></i><i class="purchase-bar" style="height:20%"></i></div><span>Fri</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:67%"></i><i class="purchase-bar" style="height:26%"></i></div><span>Sat</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:48%"></i><i class="purchase-bar" style="height:18%"></i></div><span>Sun</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:74%"></i><i class="purchase-bar" style="height:34%"></i></div><span>Mon</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:62%"></i><i class="purchase-bar" style="height:25%"></i></div><span>Tue</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:86%"></i><i class="purchase-bar" style="height:40%"></i></div><span>Wed</span></div>
+                    <div class="bar-group"><div class="bar-pair"><i style="height:70%"></i><i class="purchase-bar" style="height:31%"></i></div><span>Thu</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="chart-footer"><span>Data refreshed 2 minutes ago</span><a href="#customers">View customer signals <span aria-hidden="true">→</span></a></div>
+            </article>
+
+            <article class="panel insight-panel">
+              <div class="insight-top"><span class="insight-icon" aria-hidden="true">✳</span><span>THIS WEEK'S SIGNAL</span><span class="confidence-tag">HIGH CONFIDENCE</span></div>
+              <h2>Adventure season<br />is picking up.</h2>
+              <p>Customers exploring hiking gear are <strong>2.4× more likely</strong> to view cameras in the same session. Your camera bundles are converting especially well.</p>
+              <div class="insight-rule"></div>
+              <div class="insight-stat"><span class="insight-stat-icon">↗</span><span><strong>+32%</strong><small>camera category interest</small></span><span class="stat-window">7 DAYS</span></div>
+              <a class="insight-link" href="#trends">Explore emerging trends <span aria-hidden="true">→</span></a>
+            </article>
+          </section>
+
+          <section id="recommendations" class="panel recommendations-panel">
+            <div class="panel-heading recommendations-heading">
+              <div><div class="section-overline">PERSONALIZATION ENGINE</div><h2>Recommended right now</h2><p>Personalized picks first, then the rest of your catalog. Open a pick to see why it matched.</p></div>
+              <button class="text-action" id="view-all-recommendations" type="button">View all recommendations <span aria-hidden="true">→</span></button>
+            </div>
+            <div class="recommendation-toolbar">
+              <div class="filter-chips" role="group" aria-label="Filter recommendations">
+                <button class="filter-chip is-active" type="button" data-filter="all">All signals</button>
+                <button class="filter-chip" type="button" data-filter="views">Recently viewed</button>
+                <button class="filter-chip" type="button" data-filter="trending">Trending</button>
+              </div>
+              <label class="search-box"><span class="search-icon" aria-hidden="true"></span><input id="product-search" type="search" placeholder="Search products" aria-label="Search recommended products" /></label>
+            </div>
+
+            <div class="product-grid" id="product-grid">
+              <article class="product-card" data-product-id="camera-x2" data-name="Summit Mirrorless Camera X2" data-category="Camera gear" data-signal="views trending">
+                <div class="product-visual product-camera"><span class="product-emoji" aria-hidden="true">📷</span><span class="product-trend">TRENDING <b>↗ 32%</b></span><button class="product-more" aria-label="More about Summit Mirrorless Camera X2">···</button></div>
+                <div class="product-details"><span class="product-category">CAMERA GEAR</span><h3>Summit Mirrorless Camera X2</h3><div class="product-meta"><strong>$849.00</strong><span>★ 4.9 <small>(284)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>96%</strong></div><div class="match-track"><i style="width:96%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Viewed with hiking gear <span class="reason-dot">·</span> 12 min ago</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="trail-pack-28" data-name="Trailblazer 28L Daypack" data-category="Outdoor" data-signal="views">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">🎒</span><span class="product-tag">CUSTOMER FAVORITE</span><button class="product-more" aria-label="More about Trailblazer 28L Daypack">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Trailblazer 28L Daypack</h3><div class="product-meta"><strong>$94.00</strong><span>★ 4.8 <small>(192)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>91%</strong></div><div class="match-track"><i style="width:91%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Frequently paired with cameras</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="prime-lens-50" data-name="Peak 50mm Prime Lens" data-category="Camera gear" data-signal="trending">
+                <div class="product-visual product-lens"><span class="product-emoji" aria-hidden="true">🔭</span><span class="product-tag">PAIRING PICK</span><button class="product-more" aria-label="More about Peak 50mm Prime Lens">···</button></div>
+                <div class="product-details"><span class="product-category">CAMERA GEAR</span><h3>Peak 50mm Prime Lens</h3><div class="product-meta"><strong>$329.00</strong><span>★ 4.9 <small>(156)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>88%</strong></div><div class="match-track"><i style="width:88%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Popular with camera explorers</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="camera-sling" data-name="Field Notes Camera Sling" data-category="Accessories" data-signal="views trending">
+                <div class="product-visual product-sling"><span class="product-emoji" aria-hidden="true">👜</span><span class="product-trend">TRENDING <b>↗ 18%</b></span><button class="product-more" aria-label="More about Field Notes Camera Sling">···</button></div>
+                <div class="product-details"><span class="product-category">ACCESSORIES</span><h3>Field Notes Camera Sling</h3><div class="product-meta"><strong>$68.00</strong><span>★ 4.7 <small>(98)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>84%</strong></div><div class="match-track"><i style="width:84%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Trending in outdoor shoppers</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="trail-shell" data-name="Ridgeline Waterproof Trail Shell" data-category="Outdoor" data-signal="views trending">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">🧥</span><span class="product-trend">TRENDING <b>↗ 21%</b></span><button class="product-more" aria-label="More about Ridgeline Waterproof Trail Shell">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Ridgeline Waterproof Trail Shell</h3><div class="product-meta"><strong>$129.00</strong><span>★ 4.8 <small>(143)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>82%</strong></div><div class="match-track"><i style="width:82%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Pairs with recent trail and hiking views</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="summit-boots" data-name="Summit Grip Hiking Boots" data-category="Outdoor" data-signal="views trending">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">🥾</span><span class="product-tag">CUSTOMER FAVORITE</span><button class="product-more" aria-label="More about Summit Grip Hiking Boots">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Summit Grip Hiking Boots</h3><div class="product-meta"><strong>$159.00</strong><span>★ 4.8 <small>(211)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>79%</strong></div><div class="match-track"><i style="width:79%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Popular with shoppers exploring daypacks</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="carbon-tripod" data-name="Waypoint Carbon Travel Tripod" data-category="Camera gear" data-signal="trending">
+                <div class="product-visual product-lens"><span class="product-emoji" aria-hidden="true">📸</span><span class="product-tag">PAIRING PICK</span><button class="product-more" aria-label="More about Waypoint Carbon Travel Tripod">···</button></div>
+                <div class="product-details"><span class="product-category">CAMERA GEAR</span><h3>Waypoint Carbon Travel Tripod</h3><div class="product-meta"><strong>$119.00</strong><span>★ 4.7 <small>(87)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>77%</strong></div><div class="match-track"><i style="width:77%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>Complements camera and lens interest</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="field-drive" data-name="Fieldwork 1TB Portable SSD" data-category="Accessories" data-signal="views">
+                <div class="product-visual product-sling"><span class="product-emoji" aria-hidden="true">💾</span><span class="product-tag">TRAVEL PICK</span><button class="product-more" aria-label="More about Fieldwork 1TB Portable SSD">···</button></div>
+                <div class="product-details"><span class="product-category">ACCESSORIES</span><h3>Fieldwork 1TB Portable SSD</h3><div class="product-meta"><strong>$109.00</strong><span>★ 4.8 <small>(76)</small></span></div>
+                  <div class="match-row"><span>Customer match</span><strong>74%</strong></div><div class="match-track"><i style="width:74%"></i></div>
+                  <div class="product-reason"><span class="reason-spark">✳</span>A useful add-on for camera travelers</div>
+                  <button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="ridge-poles" data-name="Ridgeway Carbon Trekking Poles" data-category="Outdoor" data-signal="views trending">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">🥾</span><span class="product-tag">TRAIL ESSENTIAL</span><button class="product-more" aria-label="More about Ridgeway Carbon Trekking Poles">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Ridgeway Carbon Trekking Poles</h3><div class="product-meta"><strong>$79.00</strong><span>★ 4.7</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>81%</strong></div><div class="match-track"><i style="width:81%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Steady steps for trail explorers</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="merino-socks" data-name="Switchback Merino Trail Socks" data-category="Outdoor" data-signal="views">
+                <div class="product-visual product-sling"><span class="product-emoji" aria-hidden="true">🧦</span><span class="product-tag">SMALL COMFORT</span><button class="product-more" aria-label="More about Switchback Merino Trail Socks">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Switchback Merino Trail Socks</h3><div class="product-meta"><strong>$24.00</strong><span>★ 4.8</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>80%</strong></div><div class="match-track"><i style="width:80%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>A comfortable trail-day favorite</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="packing-cubes" data-name="Wanderlight Packing Cube Set" data-category="Accessories" data-signal="views">
+                <div class="product-visual product-sling"><span class="product-emoji" aria-hidden="true">🧳</span><span class="product-tag">PACK SMARTER</span><button class="product-more" aria-label="More about Wanderlight Packing Cube Set">···</button></div>
+                <div class="product-details"><span class="product-category">ACCESSORIES</span><h3>Wanderlight Packing Cube Set</h3><div class="product-meta"><strong>$38.00</strong><span>★ 4.6</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>78%</strong></div><div class="match-track"><i style="width:78%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Organize the next weekend away</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="alpine-hammock" data-name="Alpine Drift Camp Hammock" data-category="Outdoor" data-signal="trending">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">🏕️</span><span class="product-trend">TRENDING <b>↗ 19%</b></span><button class="product-more" aria-label="More about Alpine Drift Camp Hammock">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Alpine Drift Camp Hammock</h3><div class="product-meta"><strong>$89.00</strong><span>★ 4.9</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>86%</strong></div><div class="match-track"><i style="width:86%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Popular with weekend adventurers</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="atlas-binoculars" data-name="Atlas Compact Trail Binoculars" data-category="Outdoor" data-signal="views trending">
+                <div class="product-visual product-lens"><span class="product-emoji" aria-hidden="true">🔭</span><span class="product-tag">LOOK CLOSER</span><button class="product-more" aria-label="More about Atlas Compact Trail Binoculars">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Atlas Compact Trail Binoculars</h3><div class="product-meta"><strong>$139.00</strong><span>★ 4.7</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>76%</strong></div><div class="match-track"><i style="width:76%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>A natural pairing for outdoor photography</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="camera-case" data-name="Canyon Waterproof Camera Case" data-category="Accessories" data-signal="views">
+                <div class="product-visual product-sling"><span class="product-emoji" aria-hidden="true">📸</span><span class="product-tag">KEEP IT SAFE</span><button class="product-more" aria-label="More about Canyon Waterproof Camera Case">···</button></div>
+                <div class="product-details"><span class="product-category">ACCESSORIES</span><h3>Canyon Waterproof Camera Case</h3><div class="product-meta"><strong>$56.00</strong><span>★ 4.8</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>83%</strong></div><div class="match-track"><i style="width:83%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Protective gear for camera trips</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="polarizer-filter" data-name="Clearwater Polarizing Lens Filter" data-category="Camera gear" data-signal="trending">
+                <div class="product-visual product-lens"><span class="product-emoji" aria-hidden="true">🔍</span><span class="product-tag">PHOTO FAVORITE</span><button class="product-more" aria-label="More about Clearwater Polarizing Lens Filter">···</button></div>
+                <div class="product-details"><span class="product-category">CAMERA GEAR</span><h3>Clearwater Polarizing Lens Filter</h3><div class="product-meta"><strong>$45.00</strong><span>★ 4.7</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>78%</strong></div><div class="match-track"><i style="width:78%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Pairs with outdoor camera interest</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="trail-headlamp" data-name="Northline Rechargeable Headlamp" data-category="Outdoor" data-signal="views">
+                <div class="product-visual product-camera"><span class="product-emoji" aria-hidden="true">🔦</span><span class="product-tag">AFTER DARK</span><button class="product-more" aria-label="More about Northline Rechargeable Headlamp">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Northline Rechargeable Headlamp</h3><div class="product-meta"><strong>$39.00</strong><span>★ 4.8</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>75%</strong></div><div class="match-track"><i style="width:75%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>Ready for early starts and late returns</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="thermos-flask" data-name="Evergreen Trail Thermos" data-category="Outdoor" data-signal="views trending">
+                <div class="product-visual product-pack"><span class="product-emoji" aria-hidden="true">☕</span><span class="product-tag">WARM UP OUT THERE</span><button class="product-more" aria-label="More about Evergreen Trail Thermos">···</button></div>
+                <div class="product-details"><span class="product-category">OUTDOOR</span><h3>Evergreen Trail Thermos</h3><div class="product-meta"><strong>$34.00</strong><span>★ 4.7</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>81%</strong></div><div class="match-track"><i style="width:81%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>A warm-up for the next trail day</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+              <article class="product-card" data-product-id="camera-battery" data-name="Summit X2 Spare Battery" data-category="Camera gear" data-signal="views">
+                <div class="product-visual product-camera"><span class="product-emoji" aria-hidden="true">🔋</span><span class="product-tag">DON'T MISS THE SHOT</span><button class="product-more" aria-label="More about Summit X2 Spare Battery">···</button></div>
+                <div class="product-details"><span class="product-category">CAMERA GEAR</span><h3>Summit X2 Spare Battery</h3><div class="product-meta"><strong>$59.00</strong><span>★ 4.8</span></div>
+                  <div class="match-row"><span>Customer match</span><strong>82%</strong></div><div class="match-track"><i style="width:82%"></i></div><div class="product-reason"><span class="reason-spark">✳</span>A handy extra for longer photo trips</div><button class="product-open" type="button">See why recommended <span aria-hidden="true">→</span></button>
+                </div>
+              </article>
+            </div>
+            <div id="empty-products" class="empty-state" hidden>No products match that search. Try another name or filter.</div>
+            <div class="recommendation-foot"><span><span class="tiny-dot"></span> Sample scores demonstrate the matching flow</span><span>Live mode uses customer history + Bedrock</span></div>
+          </section>
+
+          <section class="lower-grid">
+            <article id="trends" class="panel trends-panel">
+              <div class="panel-heading compact-heading"><div><div class="section-overline">WHAT'S MOVING</div><h2>Emerging trends</h2></div><button class="icon-more" type="button" aria-label="More trend options">···</button></div>
+              <div class="trend-list" id="trend-list">
+                <button class="trend-item trend-item-button" type="button" data-category="Camera gear"><span class="trend-rank">01</span><span class="trend-art art-camera">📷</span><span class="trend-copy"><strong>Camera gear</strong><small>2,480 views this week</small></span><span class="trend-growth">↗ 32%</span></button>
+                <button class="trend-item trend-item-button" type="button" data-category="Outdoor"><span class="trend-rank">02</span><span class="trend-art art-trail">🥾</span><span class="trend-copy"><strong>Outdoor</strong><small>1,906 views this week</small></span><span class="trend-growth">↗ 24%</span></button>
+                <button class="trend-item trend-item-button" type="button" data-category="Accessories"><span class="trend-rank">03</span><span class="trend-art art-camp">🏕️</span><span class="trend-copy"><strong>Accessories</strong><small>1,542 views this week</small></span><span class="trend-growth">↗ 17%</span></button>
+                <button class="trend-item trend-item-button" type="button" data-category="Accessories"><span class="trend-rank">04</span><span class="trend-art art-sling">🎒</span><span class="trend-copy"><strong>Travel accessories</strong><small>1,108 views this week</small></span><span class="trend-growth">↗ 11%</span></button>
+              </div>
+            </article>
+
+            <article id="customers" class="panel signals-panel">
+              <div class="panel-heading compact-heading"><div><div class="section-overline">LIVE CUSTOMER SIGNALS</div><h2>Recent activity</h2></div><span class="live-label"><i></i> LIVE</span></div>
+              <div class="signal-list" id="signal-list">
+                <div class="signal-item"><span class="signal-icon signal-view">◉</span><span class="signal-copy"><strong>Product viewed</strong><small>Summit Mirrorless Camera X2 <span>·</span> Returning customer</small></span><time>just now</time></div>
+                <div class="signal-item"><span class="signal-icon signal-cart">＋</span><span class="signal-copy"><strong>Added to cart</strong><small>Trailblazer 28L Daypack <span>·</span> New customer</small></span><time>1m ago</time></div>
+                <div class="signal-item"><span class="signal-icon signal-buy">✓</span><span class="signal-copy"><strong>Purchase completed</strong><small>Peak 50mm Prime Lens <span>·</span> Returning customer</small></span><time>2m ago</time></div>
+                <div class="signal-item"><span class="signal-icon signal-search">⌕</span><span class="signal-copy"><strong>Search performed</strong><small>“waterproof camera bag” <span>·</span> New customer</small></span><time>4m ago</time></div>
+              </div>
+              <a class="panel-bottom-link" href="#activity">Open event activity <span aria-hidden="true">→</span></a>
+            </article>
+          </section>
+
+          <footer class="page-footer"><span>Northstar Commerce Intelligence <span>·</span> Store operations</span><span><a href="./index.html">Visit the storefront →</a></span></footer>
+        </div>
+      </main>
+    </div>
+    <section class="auth-gate" id="auth-gate" hidden aria-labelledby="auth-title">
+      <div class="auth-card">
+        <span class="auth-brand-mark" aria-hidden="true">✳</span>
+        <div class="section-overline">NORTHSTAR COMMERCE</div>
+        <h2 id="auth-title">A little more context.<br />A lot more relevant.</h2>
+        <p>Sign in to securely connect your customer signals and view personalized product recommendations.</p>
+        <button class="button button-primary auth-login" id="auth-login" type="button">Continue to sign in <span aria-hidden="true">→</span></button>
+        <small>Secure sign-in is managed by Amazon Cognito.</small>
+      </div>
+    </section>
+    <dialog class="detail-dialog" id="detail-dialog" aria-labelledby="detail-title">
+      <div class="detail-shell">
+        <button class="detail-close" id="detail-close" type="button" aria-label="Close details">×</button>
+        <div class="detail-visual" id="detail-visual" aria-hidden="true">✳</div>
+        <div class="detail-content">
+          <div class="section-overline" id="detail-eyebrow">PRODUCT DETAILS</div>
+          <div class="detail-category" id="detail-category"></div>
+          <h2 id="detail-title"></h2>
+          <div class="detail-meta"><strong id="detail-price"></strong><span id="detail-rating"></span></div>
+          <p class="detail-description" id="detail-description"></p>
+          <div class="detail-reason"><strong id="detail-reason-title">Why this was recommended</strong><p id="detail-reason"></p></div>
+          <button class="button button-primary detail-action" id="detail-action" type="button">Explore related products <span aria-hidden="true">→</span></button>
+          <small class="detail-note" id="detail-note">Demo catalog item. A real store product page or checkout is not connected.</small>
+        </div>
+      </div>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

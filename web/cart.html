@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8f7f3" />
+    <meta name="description" content="Your Northstar Goods shopping bag." />
+    <title>Your bag — Northstar Goods</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./store.css" />
+    <script src="./store.js" defer></script>
+  </head>
+  <body data-page="cart">
+    <div class="announcement">A little more outside. Free shipping on demo orders over $100.</div>
+    <header class="store-header">
+      <a class="store-logo" href="./" aria-label="Northstar Goods home"><span class="logo-word">northstar<span>.</span></span><small>GOODS FOR THE OUT THERE</small></a>
+      <nav class="store-nav" aria-label="Shop"><a href="./#shop">Shop all</a><a href="./#shop" data-category-link="Camera gear">Photography</a><a href="./#shop" data-category-link="Outdoor">Outdoor</a><a href="./#shop" data-category-link="Accessories">Accessories</a></nav>
+      <div class="header-actions"><a class="admin-link" href="./dashboard.html">Store insights <span aria-hidden="true">↗</span></a><a class="cart-link is-current" href="./cart.html" aria-label="Shopping bag"><span aria-hidden="true">▱</span> Bag <b data-cart-count>0</b></a></div>
+    </header>
+    <main class="inner-page cart-page">
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="./">Home</a><span>/</span><span>Your bag</span></nav>
+      <div class="cart-heading"><div><p class="eyebrow"><span></span> YOUR NEXT ADVENTURE</p><h1>Your bag<span>.</span></h1></div><a href="./#shop">← Keep exploring</a></div>
+      <div class="cart-layout"><section class="cart-items" id="cart-items" aria-live="polite"></section><aside class="order-summary" id="order-summary"></aside></div>
+    </main>
+    <footer class="store-footer"><a class="store-logo" href="./"><span class="logo-word">northstar<span>.</span></span><small>GOODS FOR THE OUT THERE</small></a><span>Thoughtfully picked. Happily used.</span><a href="./dashboard.html">Store insights <span aria-hidden="true">↗</span></a></footer>
+    <div class="store-toast" id="store-toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

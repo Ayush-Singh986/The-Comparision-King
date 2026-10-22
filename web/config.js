@@ -1,0 +1,1 @@
+window.NORTHSTAR_CONFIG = {};

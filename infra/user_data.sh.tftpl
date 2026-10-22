@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+
+dnf install -y python3.12 python3.12-pip unzip awscli-2 amazon-cloudwatch-agent
+mkdir -p /opt/northstar /var/log/northstar
+aws s3 cp "s3://${artifact_bucket}/${artifact_key}" /tmp/northstar-app.zip --region "${aws_region}"
+unzip -oq /tmp/northstar-app.zip -d /opt/northstar
+python3.12 -m venv /opt/northstar/venv
+/opt/northstar/venv/bin/pip install --no-cache-dir -r /opt/northstar/backend/requirements.txt
+cat > /opt/northstar/web/config.js <<'CONFIG'
+window.NORTHSTAR_CONFIG = ${config_json};
+CONFIG
+cat > /etc/northstar.env <<'ENVVARS'
+AWS_REGION=${aws_region}
+DB_HOST=${db_host}
+DB_PORT=5432
+DB_NAME=northstar
+DB_MASTER_SECRET_ARN=${db_master_secret_arn}
+DB_APP_SECRET_ARN=${db_app_secret_arn}
+METRICS_LAMBDA_ARN=${metrics_lambda_arn}
+BEDROCK_MODEL_ID=${bedrock_model_id}
+COGNITO_USER_POOL_ID=${cognito_user_pool_id}
+COGNITO_APP_CLIENT_ID=${cognito_app_client_id}
+WEB_DIRECTORY=/opt/northstar/web
+ENVVARS
+chmod 600 /etc/northstar.env
+cat > /etc/systemd/system/northstar.service <<'SERVICE'
+[Unit]
+Description=Northstar Commerce API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/opt/northstar/backend
+EnvironmentFile=/etc/northstar.env
+ExecStart=/opt/northstar/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=*
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/northstar
+StandardOutput=append:/var/log/northstar/app.log
+StandardError=append:/var/log/northstar/app.log
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+chown -R ec2-user:ec2-user /opt/northstar /var/log/northstar
+systemctl daemon-reload
+systemctl enable --now northstar.service
+
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCONFIG'
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/northstar/app.log",
+            "log_group_name": "/${project_name}/application",
+            "log_stream_name": "{instance_id}/application",
+            "retention_in_days": 30
+          }
+        ]
+      }
+    }
+  }
+}
+CWCONFIG
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
