@@ -25,6 +25,36 @@ resource "aws_sns_topic" "alarms" {
   name = "${var.project_name}-alarms"
 }
 
+resource "aws_budgets_budget" "monthly_cost" {
+  name         = "${var.project_name}-monthly-cost"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_limit_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  dynamic "notification" {
+    for_each = var.alert_email == "" ? [] : [var.alert_email]
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = 80
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "ACTUAL"
+      subscriber_email_addresses = [notification.value]
+    }
+  }
+
+  dynamic "notification" {
+    for_each = var.alert_email == "" ? [] : [var.alert_email]
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = 100
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "FORECASTED"
+      subscriber_email_addresses = [notification.value]
+    }
+  }
+}
+
 resource "aws_sns_topic_subscription" "email" {
   count     = var.alert_email == "" ? 0 : 1
   topic_arn = aws_sns_topic.alarms.arn

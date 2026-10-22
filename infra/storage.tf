@@ -18,7 +18,7 @@ resource "aws_db_instance" "main" {
   manage_master_user_password           = true
   db_subnet_group_name                  = aws_db_subnet_group.main.name
   vpc_security_group_ids                = [aws_security_group.database.id]
-  multi_az                              = false
+  multi_az                              = var.high_availability
   publicly_accessible                   = false
   backup_retention_period               = 7
   backup_window                         = "03:00-04:00"
@@ -28,8 +28,8 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot                   = false
   final_snapshot_identifier             = "${var.project_name}-final"
   copy_tags_to_snapshot                 = true
-  performance_insights_enabled          = true
-  performance_insights_retention_period = 7
+  performance_insights_enabled          = var.enable_performance_insights
+  performance_insights_retention_period = var.enable_performance_insights ? 7 : null
   monitoring_interval                   = 0
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 }

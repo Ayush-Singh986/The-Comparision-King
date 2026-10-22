@@ -32,6 +32,7 @@
           <a class="nav-link" href="./index.html"><span class="nav-icon icon-overview" aria-hidden="true"></span>Shop storefront</a>
           <a class="nav-link is-active" href="#overview" data-nav="overview"><span class="nav-icon icon-overview" aria-hidden="true"></span>Overview</a>
           <a class="nav-link" href="#recommendations" data-nav="recommendations"><span class="nav-icon icon-spark" aria-hidden="true"></span>Recommendations<span class="nav-badge" id="nav-count">18</span></a>
+          <a class="nav-link" href="#experiment" data-nav="experiment"><span class="nav-icon icon-trend" aria-hidden="true"></span>Experiment results</a>
           <a class="nav-link" href="#customers" data-nav="customers"><span class="nav-icon icon-people" aria-hidden="true"></span>Customers</a>
           <a class="nav-link" href="#trends" data-nav="trends"><span class="nav-icon icon-trend" aria-hidden="true"></span>Trending products</a>
           <a class="nav-link" href="#activity" data-nav="activity"><span class="nav-icon icon-activity" aria-hidden="true"></span>Event activity</a>
@@ -95,6 +96,30 @@
             </article>
           </section>
 
+          <section id="experiment" class="panel experiment-panel" aria-labelledby="experiment-title">
+            <div class="panel-heading">
+              <div>
+                <div class="section-overline">CONTROLLED COMPARISON</div>
+                <h2 id="experiment-title">Recommendation experiment</h2>
+                <p>Randomly assigned sessions: popular picks vs. personalized recommendations.</p>
+              </div>
+            </div>
+            <div class="experiment-comparison">
+              <div><span>Treatment CTR relative change vs. control</span><strong id="experiment-ctr-change">—</strong></div>
+              <div><span>Treatment conversion relative change vs. control</span><strong id="experiment-conversion-change">—</strong></div>
+            </div>
+            <div class="experiment-table-wrap">
+              <table class="experiment-table">
+                <thead><tr><th scope="col">Arm</th><th scope="col">Assigned</th><th scope="col">Exposed</th><th scope="col">Impressions</th><th scope="col">Clicks</th><th scope="col">CTR</th><th scope="col">CTR 95% interval</th><th scope="col">Sessions with verified order</th><th scope="col">Conversion</th><th scope="col">Conversion 95% interval</th><th scope="col">Verified gross order value (USD)</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">Control <small>Top-rated picks</small></th><td id="experiment-control-assigned">—</td><td id="experiment-control-exposed">—</td><td id="experiment-control-impressions">—</td><td id="experiment-control-clicks">—</td><td id="experiment-control-ctr">—</td><td id="experiment-control-ctr-ci">—</td><td id="experiment-control-orders">—</td><td id="experiment-control-conversion">—</td><td id="experiment-control-conversion-ci">—</td><td id="experiment-control-sales">—</td></tr>
+                  <tr><th scope="row">Treatment <small>Personalized</small></th><td id="experiment-treatment-assigned">—</td><td id="experiment-treatment-exposed">—</td><td id="experiment-treatment-impressions">—</td><td id="experiment-treatment-clicks">—</td><td id="experiment-treatment-ctr">—</td><td id="experiment-treatment-ctr-ci">—</td><td id="experiment-treatment-orders">—</td><td id="experiment-treatment-conversion">—</td><td id="experiment-treatment-conversion-ci">—</td><td id="experiment-treatment-sales">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="experiment-caveat" id="experiment-caveat">Only verified order webhooks tied to a storefront session count. Gross order value excludes refunds, cancellations, cost of goods, and payment fees. Wilson intervals are descriptive and do not establish statistical significance or sales uplift.</p>
+          </section>
+
           <section class="content-grid">
             <article id="activity" class="panel activity-panel">
               <div class="panel-heading">
@@ -124,11 +149,11 @@
             </article>
 
             <article class="panel insight-panel">
-              <div class="insight-top"><span class="insight-icon" aria-hidden="true">✳</span><span>THIS WEEK'S SIGNAL</span><span class="confidence-tag">HIGH CONFIDENCE</span></div>
-              <h2>Adventure season<br />is picking up.</h2>
-              <p>Customers exploring hiking gear are <strong>2.4× more likely</strong> to view cameras in the same session. Your camera bundles are converting especially well.</p>
+              <div class="insight-top"><span class="insight-icon" aria-hidden="true">✳</span><span>INSIGHT STATUS</span><span class="confidence-tag">DEMO ONLY</span></div>
+              <h2>Measured insights<br />need real traffic.</h2>
+              <p>This portfolio dashboard does not yet calculate cross-category affinity or product conversion insights. Treat sample values elsewhere on this page as illustrative, not customer evidence.</p>
               <div class="insight-rule"></div>
-              <div class="insight-stat"><span class="insight-stat-icon">↗</span><span><strong>+32%</strong><small>camera category interest</small></span><span class="stat-window">7 DAYS</span></div>
+              <div class="insight-stat"><span class="insight-stat-icon">↗</span><span><strong>Not measured</strong><small>live trend insight</small></span><span class="stat-window">LIVE DATA</span></div>
               <a class="insight-link" href="#trends">Explore emerging trends <span aria-hidden="true">→</span></a>
             </article>
           </section>

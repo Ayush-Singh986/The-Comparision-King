@@ -122,6 +122,18 @@ h1 { color: #292c26; font: 700 27px "Manrope", sans-serif; letter-spacing: -1.1p
 
 .content-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr); margin-bottom: 15px; }
 .panel { min-width: 0; padding: 18px; }
+.experiment-panel { margin-bottom: 15px; }
+.experiment-comparison { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 16px 0; }
+.experiment-comparison > div { background: #f6f7f3; border: 1px solid #ebede7; border-radius: 8px; display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; }
+.experiment-comparison span, .experiment-caveat { color: #85877e; font-size: 10px; }
+.experiment-comparison strong { color: #3f6847; font: 700 20px "Manrope", sans-serif; }
+.experiment-table-wrap { overflow-x: auto; }
+.experiment-table { border-collapse: collapse; min-width: 760px; text-align: left; width: 100%; }
+.experiment-table th, .experiment-table td { border-bottom: 1px solid #eef0eb; color: #62665d; font-size: 10px; padding: 10px 8px; white-space: nowrap; }
+.experiment-table thead th { color: #96988f; font-size: 9px; font-weight: 600; }
+.experiment-table tbody th { color: #41473f; font-weight: 700; }
+.experiment-table tbody th small { color: #96988f; display: block; font-size: 9px; font-weight: 400; margin-top: 3px; }
+.experiment-caveat { line-height: 1.6; margin: 12px 0 0; }
 .panel-heading { align-items: center; display: flex; justify-content: space-between; }
 .panel-heading h2 { font: 700 14px "Manrope", sans-serif; letter-spacing: -.35px; margin: 0 0 4px; }
 .panel-heading p { color: #92948c; font-size: 10px; margin: 0; }

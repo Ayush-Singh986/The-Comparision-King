@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -11,6 +12,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any
 
@@ -218,7 +220,7 @@ jwks_client = PyJWKClient(
     cache_jwk_set=True,
     lifespan=3600,
 )
-recommendation_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
+recommendation_cache: dict[tuple[str, int, str], tuple[float, list[dict[str, Any]]]] = {}
 recommendation_cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 300
 CACHE_MAX_ENTRIES = 5000
@@ -305,6 +307,38 @@ def initialize_database(connection: Connection) -> None:
         )
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS experiment_assignments (
+                customer_id TEXT PRIMARY KEY,
+                arm TEXT NOT NULL CHECK (arm IN ('control', 'treatment')),
+                assigned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS experiment_assignments_assigned_at_idx
+            ON experiment_assignments (assigned_at DESC)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recommendation_offers (
+                offer_id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                product_id TEXT NOT NULL REFERENCES products(product_id),
+                issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS recommendation_offers_customer_time_idx
+            ON recommendation_offers (customer_id, issued_at DESC)
+            """
+        )
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS customer_events (
                 id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id TEXT NOT NULL,
@@ -316,8 +350,15 @@ def initialize_database(connection: Connection) -> None:
                 ),
                 product_id TEXT REFERENCES products(product_id),
                 query TEXT,
+                offer_id TEXT REFERENCES recommendation_offers(offer_id),
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE customer_events
+            ADD COLUMN IF NOT EXISTS offer_id TEXT REFERENCES recommendation_offers(offer_id)
             """
         )
         cursor.execute(
@@ -330,6 +371,13 @@ def initialize_database(connection: Connection) -> None:
             """
             CREATE INDEX IF NOT EXISTS customer_events_time_type_idx
             ON customer_events (created_at DESC, event_type)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS customer_events_offer_type_idx
+            ON customer_events (offer_id, event_type)
+            WHERE offer_id IS NOT NULL
             """
         )
         cursor.execute(
@@ -361,8 +409,22 @@ def initialize_database(connection: Connection) -> None:
                 customer_id TEXT NOT NULL,
                 occurred_at TIMESTAMPTZ NOT NULL,
                 payload_sha256 TEXT NOT NULL,
+                total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                currency TEXT NOT NULL DEFAULT 'USD',
                 received_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE order_webhook_events
+            ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE order_webhook_events
+            ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'
             """
         )
         cursor.execute(
@@ -385,13 +447,7 @@ def initialize_database(connection: Connection) -> None:
             """
             INSERT INTO products (product_id, name, category, price, rating, emoji)
             VALUES (%(product_id)s, %(name)s, %(category)s, %(price)s, %(rating)s, %(emoji)s)
-            ON CONFLICT (product_id) DO UPDATE SET
-                name = EXCLUDED.name,
-                category = EXCLUDED.category,
-                price = EXCLUDED.price,
-                rating = EXCLUDED.rating,
-                emoji = EXCLUDED.emoji,
-                updated_at = now()
+            ON CONFLICT (product_id) DO NOTHING
             """,
             PRODUCTS,
         )
@@ -468,6 +524,7 @@ class CustomerEvent(BaseModel):
     event_type: EventType
     product_id: str | None = Field(default=None, max_length=64)
     query: str | None = Field(default=None, max_length=128)
+    offer_id: str | None = Field(default=None, min_length=40, max_length=128)
 
     @model_validator(mode="after")
     def validate_event_context(self) -> CustomerEvent:
@@ -477,6 +534,14 @@ class CustomerEvent(BaseModel):
             raise ValueError("query is required for search events")
         if self.event_type != EventType.search and self.query is not None:
             raise ValueError("query is only allowed for search events")
+        is_recommendation_event = self.event_type in {
+            EventType.recommendation_impression,
+            EventType.recommendation_click,
+        }
+        if is_recommendation_event != (self.offer_id is not None):
+            raise ValueError("offer_id is required only for recommendation events")
+        if self.offer_id is not None and not STORE_OFFER_PATTERN.fullmatch(self.offer_id):
+            raise ValueError("offer_id is invalid")
         return self
 
 
@@ -530,7 +595,7 @@ AuthenticatedCustomer = Annotated[dict[str, Any], Depends(require_customer)]
 
 def record_customer_event(
     customer_id: str, event: CustomerEvent, connection_pool: ConnectionPool
-) -> int:
+) -> tuple[int, bool]:
     with connection_pool.connection() as connection, connection.cursor() as cursor:
         if event.product_id:
             cursor.execute(
@@ -539,17 +604,67 @@ def record_customer_event(
             )
             if cursor.fetchone() is None:
                 raise HTTPException(status_code=422, detail="Unknown product_id.")
+        if event.offer_id:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM recommendation_offers
+                WHERE offer_id = %s
+                  AND customer_id = %s
+                  AND product_id = %s
+                  AND expires_at > now()
+                """,
+                (event.offer_id, customer_id, event.product_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Recommendation offer is unknown, expired, or belongs to another session.",
+                )
+            if event.event_type == EventType.recommendation_click:
+                cursor.execute(
+                    """
+                    SELECT 1 FROM customer_events
+                    WHERE offer_id = %s AND event_type = 'recommendation_impression'
+                    """,
+                    (event.offer_id,),
+                )
+                if cursor.fetchone() is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="A recommendation click requires a recorded impression.",
+                    )
         cursor.execute(
             """
-            INSERT INTO customer_events (customer_id, event_type, product_id, query)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO customer_events (
+                customer_id, event_type, product_id, query, offer_id
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (offer_id, event_type) WHERE offer_id IS NOT NULL DO NOTHING
             RETURNING id
             """,
-            (customer_id, event.event_type.value, event.product_id, event.query),
+            (
+                customer_id,
+                event.event_type.value,
+                event.product_id,
+                event.query,
+                event.offer_id,
+            ),
         )
-        event_id = cursor.fetchone()["id"]
+        inserted = cursor.fetchone()
+        if inserted is None:
+            cursor.execute(
+                "SELECT id FROM customer_events WHERE offer_id = %s AND event_type = %s",
+                (event.offer_id, event.event_type.value),
+            )
+            prior = cursor.fetchone()
+            if prior is None:
+                raise RuntimeError("Duplicate recommendation event was not found.")
+            connection.commit()
+            return prior["id"], False
+        event_id = inserted["id"]
         connection.commit()
-    return event_id
+    return event_id, True
 
 
 def publish_event_metric(event: CustomerEvent, event_id: int) -> bool:
@@ -593,6 +708,7 @@ def health(connection_pool: Annotated[ConnectionPool, Depends(db_pool)]) -> dict
 
 STORE_SESSION_COOKIE = "northstar_store_session"
 STORE_SESSION_PATTERN = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
+STORE_OFFER_PATTERN = re.compile(r"^[A-Za-z0-9_-]{40,128}$")
 
 
 def require_store_session(request: Request) -> str:
@@ -621,6 +737,8 @@ class TrustedOrder(BaseModel):
     order_id: str = Field(min_length=1, max_length=128)
     session_id: str | None = Field(default=None, min_length=40, max_length=128)
     occurred_at: datetime
+    total_amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(default="USD", pattern="^[A-Z]{3}$")
     items: list[OrderLine] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
@@ -632,6 +750,8 @@ class TrustedOrder(BaseModel):
             raise ValueError("Order product IDs must be unique.")
         if self.occurred_at.tzinfo is None:
             raise ValueError("occurred_at must include a timezone.")
+        if self.occurred_at > datetime.now(UTC) + timedelta(minutes=5):
+            raise ValueError("occurred_at cannot be more than five minutes in the future.")
         return self
 
 
@@ -671,10 +791,14 @@ def get_recommendations(
     customer_id: str,
     request: Request,
     connection_pool: ConnectionPool,
+    experiment_arm: str | None = None,
+    context: tuple[int, list[dict[str, Any]], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    newest_event_id, history, products = read_customer_context(customer_id, connection_pool)
-    cache_key = (customer_id, newest_event_id)
+    newest_event_id, history, products = context or read_customer_context(
+        customer_id, connection_pool
+    )
+    cache_key = (customer_id, newest_event_id, experiment_arm or "personalized")
     now = time.monotonic()
     with recommendation_cache_lock:
         cached = recommendation_cache.get(cache_key)
@@ -682,8 +806,24 @@ def get_recommendations(
     if cache_hit:
         items = cached[1]
     else:
-        if history:
-            items = generate_recommendations(history, products)
+        if history and experiment_arm != "control":
+            items = generate_recommendations(history, products)[:8]
+            if experiment_arm == "treatment" and len(items) < min(8, len(products)):
+                seen_ids = {item["product_id"] for item in items}
+                fallback_items = [
+                    {
+                        **product,
+                        "reason": "A highly rated pick from our catalog.",
+                        "score": round(float(product["rating"]) / 5, 2),
+                    }
+                    for product in sorted(
+                        products,
+                        key=lambda product: float(product["rating"]),
+                        reverse=True,
+                    )
+                    if product["product_id"] not in seen_ids
+                ]
+                items = (items + fallback_items)[:8]
         else:
             items = [
                 {
@@ -693,7 +833,7 @@ def get_recommendations(
                 }
                 for product in sorted(
                     products, key=lambda product: float(product["rating"]), reverse=True
-                )[:4]
+                )[:8]
             ]
         with recommendation_cache_lock:
             if len(recommendation_cache) >= CACHE_MAX_ENTRIES:
@@ -719,7 +859,10 @@ def get_recommendations(
         duration_ms,
         extra={"request_id": request.headers.get("x-amzn-trace-id")},
     )
-    return {"items": items, "cache_hit": cache_hit, "latency_ms": duration_ms}
+    result = {"items": items, "cache_hit": cache_hit, "latency_ms": duration_ms}
+    if experiment_arm is not None:
+        result["experiment_arm"] = experiment_arm
+    return result
 
 
 @app.post("/api/store/session")
@@ -772,9 +915,9 @@ def create_store_event(
     customer_id: StoreCustomer,
     connection_pool: Annotated[ConnectionPool, Depends(db_pool)],
 ) -> dict[str, int | bool]:
-    event_id = record_customer_event(customer_id, event, connection_pool)
-    metrics_queued = publish_event_metric(event, event_id)
-    return {"event_id": event_id, "metrics_queued": metrics_queued}
+    event_id, inserted = record_customer_event(customer_id, event, connection_pool)
+    metrics_queued = publish_event_metric(event, event_id) if inserted else True
+    return {"event_id": event_id, "metrics_queued": metrics_queued, "duplicate": not inserted}
 
 
 @app.get("/api/store/recommendations")
@@ -786,7 +929,40 @@ def store_recommendations(
 ) -> dict[str, Any]:
     response.headers["Cache-Control"] = "private, no-store"
     enforce_store_recommendation_limit(customer_id, connection_pool)
-    return get_recommendations(customer_id, request, connection_pool)
+    context = read_customer_context(customer_id, connection_pool)
+    _, history, products = context
+    experiment_arm = (
+        get_or_create_experiment_arm(customer_id, connection_pool)
+        if history
+        else None
+    )
+    result = get_recommendations(
+        customer_id,
+        request,
+        connection_pool,
+        experiment_arm=experiment_arm,
+        context=context,
+    )
+    expires_at = datetime.now(UTC) + timedelta(days=30)
+    issued_items = []
+    with connection_pool.connection() as connection, connection.cursor() as cursor:
+        for item in result["items"]:
+            offer_id = secrets.token_urlsafe(32)
+            cursor.execute(
+                """
+                INSERT INTO recommendation_offers (
+                    offer_id, customer_id, product_id, expires_at
+                )
+                VALUES (%s, %s, %s, %s)
+                """,
+                (offer_id, customer_id, item["product_id"], expires_at),
+            )
+            issued_items.append({**item, "offer_id": offer_id})
+        connection.commit()
+    result["items"] = issued_items
+    if experiment_arm is None:
+        result["experiment_arm"] = None
+    return result
 
 
 @app.post("/api/webhooks/orders")
@@ -844,9 +1020,10 @@ async def ingest_order_webhook(
         cursor.execute(
             """
             INSERT INTO order_webhook_events (
-                event_id, order_id, customer_id, occurred_at, payload_sha256
+                event_id, order_id, customer_id, occurred_at, payload_sha256,
+                total_amount, currency
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
             RETURNING event_id
             """,
@@ -856,6 +1033,8 @@ async def ingest_order_webhook(
                 customer_id,
                 occurred_at,
                 payload_sha256,
+                order.total_amount,
+                order.currency,
             ),
         )
         inserted = cursor.fetchone() is not None
@@ -915,9 +1094,9 @@ def create_event(
     claims: AuthenticatedCustomer,
     connection_pool: Annotated[ConnectionPool, Depends(db_pool)],
 ) -> dict[str, int | bool]:
-    event_id = record_customer_event(claims["sub"], event, connection_pool)
-    metrics_queued = publish_event_metric(event, event_id)
-    return {"event_id": event_id, "metrics_queued": metrics_queued}
+    event_id, inserted = record_customer_event(claims["sub"], event, connection_pool)
+    metrics_queued = publish_event_metric(event, event_id) if inserted else True
+    return {"event_id": event_id, "metrics_queued": metrics_queued, "duplicate": not inserted}
 
 
 def read_customer_context(
@@ -947,6 +1126,30 @@ def read_customer_context(
         products = cursor.fetchall()
     newest_event_id = history[0]["newest_event_id"] if history else 0
     return newest_event_id, history, products
+
+
+def get_or_create_experiment_arm(
+    customer_id: str, connection_pool: ConnectionPool
+) -> str:
+    proposed_arm = "control" if secrets.randbelow(2) == 0 else "treatment"
+    with connection_pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO experiment_assignments (customer_id, arm)
+            VALUES (%s, %s)
+            ON CONFLICT (customer_id) DO NOTHING
+            """,
+            (customer_id, proposed_arm),
+        )
+        cursor.execute(
+            "SELECT arm FROM experiment_assignments WHERE customer_id = %s",
+            (customer_id,),
+        )
+        assignment = cursor.fetchone()
+        if assignment is None:
+            raise RuntimeError("Experiment assignment was not persisted.")
+        connection.commit()
+    return assignment["arm"]
 
 
 def generate_recommendations(
@@ -1058,6 +1261,90 @@ def recommendations(
     return get_recommendations(claims["sub"], request, connection_pool)
 
 
+def build_experiment_summary(
+    rows: list[dict[str, Any]], days: int
+) -> dict[str, Any]:
+    def wilson_interval(successes: int, trials: int) -> list[float] | None:
+        if trials <= 0:
+            return None
+        z = 1.96
+        rate = successes / trials
+        denominator = 1 + z * z / trials
+        center = (rate + z * z / (2 * trials)) / denominator
+        margin = (
+            z
+            * math.sqrt(rate * (1 - rate) / trials + z * z / (4 * trials * trials))
+            / denominator
+        )
+        return [
+            round(100 * max(0, center - margin), 2),
+            round(100 * min(1, center + margin), 2),
+        ]
+
+    arms = {
+        row["arm"]: {
+            "assigned_sessions": row["assigned_sessions"],
+            "exposed_sessions": row["exposed_sessions"],
+            "impressions": row["impressions"],
+            "clicks": row["clicks"],
+            "ctr_percent": (
+                round(100 * row["clicks"] / row["impressions"], 2)
+                if row["impressions"]
+                else 0
+            ),
+            "ctr_95ci_percent": wilson_interval(row["clicks"], row["impressions"]),
+            "purchasing_sessions": row["purchasing_sessions"],
+            "gross_sales_usd": float(row["gross_sales_usd"]),
+            "conversion_percent": (
+                round(100 * row["purchasing_sessions"] / row["exposed_sessions"], 2)
+                if row["exposed_sessions"]
+                else 0
+            ),
+            "conversion_95ci_percent": wilson_interval(
+                row["purchasing_sessions"], row["exposed_sessions"]
+            ),
+        }
+        for row in rows
+    }
+    for arm in ("control", "treatment"):
+        arms.setdefault(
+            arm,
+            {
+                "assigned_sessions": 0,
+                "exposed_sessions": 0,
+                "impressions": 0,
+                "clicks": 0,
+                "ctr_percent": 0,
+                "ctr_95ci_percent": None,
+                "purchasing_sessions": 0,
+                "gross_sales_usd": 0,
+                "conversion_percent": 0,
+                "conversion_95ci_percent": None,
+            },
+        )
+
+    def relative_change(metric: str) -> float | None:
+        control_value = arms["control"][metric]
+        if not control_value:
+            return None
+        return round(
+            100 * (arms["treatment"][metric] - control_value) / control_value, 2
+        )
+
+    return {
+        "window_days": days,
+        "arms": arms,
+        "treatment_ctr_relative_change_percent": relative_change("ctr_percent"),
+        "treatment_conversion_relative_change_percent": relative_change(
+            "conversion_percent"
+        ),
+        "interpretation": (
+            "Randomized session comparison; results are directional and do not "
+            "establish sales uplift or statistical significance."
+        ),
+    }
+
+
 @app.get("/api/summary")
 def summary(
     claims: AuthenticatedCustomer,
@@ -1084,6 +1371,7 @@ def summary(
                 count(*) FILTER (WHERE event_type = 'recommendation_impression' AND created_at >= %s) AS impressions_7d,
                 count(*) FILTER (WHERE event_type = 'recommendation_click' AND created_at >= %s) AS clicks_7d
             FROM customer_events
+            WHERE customer_id LIKE 'store:%'
             """,
             (cutoff_7d, cutoff_7d, cutoff_7d, cutoff_7d, cutoff_7d),
         )
@@ -1095,7 +1383,8 @@ def summary(
                    count(*) FILTER (WHERE event_type = 'product_view') AS views,
                    count(*) FILTER (WHERE event_type = 'purchase') AS purchases
             FROM customer_events
-            WHERE created_at >= %s
+            WHERE customer_id LIKE 'store:%'
+              AND created_at >= %s
             GROUP BY day
             ORDER BY day
             """,
@@ -1108,6 +1397,7 @@ def summary(
             FROM customer_events e
             JOIN products p ON p.product_id = e.product_id
             WHERE e.event_type = 'product_view'
+              AND e.customer_id LIKE 'store:%'
               AND e.created_at >= %s
             GROUP BY p.category
             ORDER BY views DESC
@@ -1126,6 +1416,7 @@ def summary(
             FROM customer_events e
             JOIN products p ON p.product_id = e.product_id
             WHERE e.event_type = 'product_view'
+              AND e.customer_id LIKE 'store:%'
               AND e.created_at >= %s
             GROUP BY p.category
             HAVING count(*) FILTER (WHERE e.created_at >= %s) > 0
@@ -1147,11 +1438,81 @@ def summary(
                    coalesce(round(100.0 * count(*) FILTER (WHERE cache_hit) /
                                   nullif(count(*), 0), 0), 0) AS cache_hit_percent
             FROM recommendation_requests
-            WHERE created_at >= %s
+            WHERE customer_id LIKE 'store:%'
+              AND created_at >= %s
             """,
             (cutoff_7d,),
         )
         performance = cursor.fetchone()
+        cursor.execute(
+            """
+            WITH session_events AS (
+                SELECT a.customer_id,
+                       count(*) FILTER (
+                           WHERE e.event_type = 'recommendation_impression'
+                             AND e.offer_id IS NOT NULL
+                       ) AS impressions,
+                       count(*) FILTER (
+                           WHERE e.event_type = 'recommendation_click'
+                             AND e.offer_id IS NOT NULL
+                       ) AS clicks,
+                       min(e.created_at) FILTER (
+                           WHERE e.event_type = 'recommendation_impression'
+                             AND e.offer_id IS NOT NULL
+                       ) AS first_impression_at
+                FROM experiment_assignments a
+                JOIN customer_events e
+                  ON e.customer_id = a.customer_id
+                 AND e.created_at >= a.assigned_at
+                 AND e.created_at >= %s
+                WHERE a.assigned_at >= %s
+                GROUP BY a.customer_id
+            ),
+            session_outcomes AS (
+                SELECT a.customer_id,
+                       count(o.event_id) FILTER (
+                           WHERE e.first_impression_at IS NOT NULL
+                             AND o.occurred_at >= e.first_impression_at
+                       ) AS verified_orders,
+                       coalesce(sum(o.total_amount) FILTER (
+                           WHERE e.first_impression_at IS NOT NULL
+                             AND o.occurred_at >= e.first_impression_at
+                             AND o.currency = 'USD'
+                       ), 0) AS gross_sales_usd
+                FROM experiment_assignments a
+                LEFT JOIN session_events e ON e.customer_id = a.customer_id
+                LEFT JOIN order_webhook_events o
+                  ON o.customer_id = a.customer_id
+                 AND o.occurred_at >= %s
+                WHERE a.assigned_at >= %s
+                GROUP BY a.customer_id, e.first_impression_at
+            )
+            SELECT a.arm,
+                   count(*) AS assigned_sessions,
+                   count(*) FILTER (WHERE e.first_impression_at IS NOT NULL)
+                       AS exposed_sessions,
+                   coalesce(sum(e.impressions), 0) AS impressions,
+                   coalesce(sum(e.clicks), 0) AS clicks,
+                   count(*) FILTER (
+                       WHERE e.first_impression_at IS NOT NULL
+                         AND coalesce(o.verified_orders, 0) > 0
+                   ) AS purchasing_sessions,
+                   coalesce(sum(o.gross_sales_usd), 0) AS gross_sales_usd
+            FROM experiment_assignments a
+            LEFT JOIN session_events e ON e.customer_id = a.customer_id
+            LEFT JOIN session_outcomes o ON o.customer_id = a.customer_id
+            WHERE a.assigned_at >= %s
+            GROUP BY a.arm
+            """,
+            (
+                activity_cutoff,
+                activity_cutoff,
+                activity_cutoff,
+                activity_cutoff,
+                activity_cutoff,
+            ),
+        )
+        experiment_rows = cursor.fetchall()
         cursor.execute("SELECT count(*) AS product_count FROM products")
         product_count = cursor.fetchone()["product_count"]
         cursor.execute(
@@ -1159,6 +1520,7 @@ def summary(
             SELECT e.event_type, p.name AS product_name, e.query, e.created_at
             FROM customer_events e
             LEFT JOIN products p ON p.product_id = e.product_id
+            WHERE e.customer_id LIKE 'store:%'
             ORDER BY e.id DESC
             LIMIT 4
             """
@@ -1193,6 +1555,7 @@ def summary(
         "product_count": product_count,
         "avg_latency_ms": performance["avg_latency_ms"],
         "cache_hit_percent": performance["cache_hit_percent"],
+        "experiment": build_experiment_summary(experiment_rows, days),
         "activity_days": days,
         "activity": [
             {

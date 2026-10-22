@@ -13,6 +13,11 @@ output "alb_dns_name" {
   value       = aws_lb.app.dns_name
 }
 
+output "origin_tls_enabled" {
+  description = "Whether CloudFront connects to the ALB over HTTPS. Set origin_domain_name and origin_certificate_arn to enable."
+  value       = var.origin_certificate_arn != ""
+}
+
 output "cognito_user_pool_id" {
   description = "Create user accounts in this Cognito user pool."
   value       = aws_cognito_user_pool.main.id

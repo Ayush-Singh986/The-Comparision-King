@@ -13,6 +13,9 @@ locals {
   public_subnets     = { for index, az in local.availability_zones : az => cidrsubnet("10.20.0.0/16", 8, index) }
   app_subnets        = { for index, az in local.availability_zones : az => cidrsubnet("10.20.0.0/16", 8, index + 10) }
   database_subnets   = { for index, az in local.availability_zones : az => cidrsubnet("10.20.0.0/16", 8, index + 20) }
+  nat_availability_zones = var.high_availability ? local.availability_zones : [
+    local.availability_zones[0]
+  ]
 }
 
 resource "aws_internet_gateway" "main" {
@@ -57,12 +60,14 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_eip" "nat" {
-  domain = "vpc"
+  for_each = toset(local.nat_availability_zones)
+  domain   = "vpc"
 }
 
 resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[local.availability_zones[0]].id
+  for_each      = toset(local.nat_availability_zones)
+  allocation_id = aws_eip.nat[each.key].id
+  subnet_id     = aws_subnet.public[each.key].id
   depends_on    = [aws_internet_gateway.main]
 }
 
@@ -71,8 +76,10 @@ resource "aws_route_table" "application" {
   vpc_id   = aws_vpc.main.id
 
   route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[
+      var.high_availability ? each.key : local.availability_zones[0]
+    ].id
   }
 }
 
@@ -108,6 +115,14 @@ resource "aws_security_group" "load_balancer" {
     description     = "CloudFront origin-facing connections"
     from_port       = 80
     to_port         = 80
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+  }
+
+  ingress {
+    description     = "HTTPS origin traffic from CloudFront."
+    from_port       = 443
+    to_port         = 443
     protocol        = "tcp"
     prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   }

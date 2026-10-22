@@ -25,6 +25,27 @@ const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "
 let storeMode = "offline";
 let searchEventTimeout;
 let recommendations = [];
+const recommendationExposurePromises = new Map();
+const recommendationObserver = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting || entry.intersectionRatio < 0.5) return;
+      const card = entry.target;
+      recommendationObserver.unobserve(card);
+      const offerId = card.dataset.offerId;
+      const productId = card.dataset.productId;
+      if (!offerId || !productId || recommendationExposurePromises.has(offerId)) return;
+      recommendationExposurePromises.set(
+        offerId,
+        recordStoreEvent({
+          event_type: "recommendation_impression",
+          product_id: productId,
+          offer_id: offerId,
+        }),
+      );
+    });
+  }, { threshold: 0.5 })
+  : null;
 
 function readStored(key, fallback) {
   try {
@@ -76,12 +97,34 @@ async function apiRequest(path, options = {}) {
 }
 
 async function recordStoreEvent(event) {
-  if (storeMode !== "live") return;
+  if (storeMode !== "live") return false;
   try {
     await apiRequest("events", { method: "POST", body: JSON.stringify(event), keepalive: true });
+    return true;
   } catch (error) {
     console.error("Unable to record storefront activity.", error);
     showStoreAlert("Some browsing activity could not be saved. Recommendations may be less personal.");
+    return false;
+  }
+}
+
+async function recordRecommendationClick(product) {
+  if (storeMode !== "live" || !product.offer_id) return;
+  let exposed = recommendationExposurePromises.get(product.offer_id);
+  if (!exposed) {
+    exposed = recordStoreEvent({
+      event_type: "recommendation_impression",
+      product_id: product.id,
+      offer_id: product.offer_id,
+    });
+    recommendationExposurePromises.set(product.offer_id, exposed);
+  }
+  if (await exposed) {
+    await recordStoreEvent({
+      event_type: "recommendation_click",
+      product_id: product.id,
+      offer_id: product.offer_id,
+    });
   }
 }
 
@@ -114,6 +157,11 @@ async function loadLiveCatalog() {
 
 async function loadLiveRecommendations() {
   const response = await apiRequest("recommendations");
+  if (response.experiment_arm === "control") {
+    showStoreAlert("Experiment group: top-rated product picks.");
+  } else if (response.experiment_arm === "treatment") {
+    showStoreAlert("Experiment group: personalized product picks.");
+  }
   const items = response.items.map((item) => ({
     ...(getProduct(item.product_id) || {
       id: item.product_id,
@@ -127,9 +175,6 @@ async function loadLiveRecommendations() {
     ...item,
     id: item.product_id,
   }));
-  items.forEach((item) => {
-    void recordStoreEvent({ event_type: "recommendation_impression", product_id: item.id });
-  });
   return items;
 }
 
@@ -168,6 +213,10 @@ function showToast(message) {
 function productCard(product, recommendation = false) {
   const card = document.createElement("article");
   card.className = "shop-card";
+  if (recommendation && product.offer_id) {
+    card.dataset.offerId = product.offer_id;
+    card.dataset.productId = product.id;
+  }
   const link = document.createElement("a");
   link.className = `shop-card-art ${product.art}`;
   link.href = `./product.html?id=${encodeURIComponent(product.id)}`;
@@ -198,6 +247,7 @@ function productCard(product, recommendation = false) {
   quickAdd.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    void recordRecommendationClick(product);
     setQuantity(product.id, Number(getCart()[product.id] || 0) + 1);
     showToast(`${product.name} added to your bag.`);
   });
@@ -228,8 +278,14 @@ function productCard(product, recommendation = false) {
     details.append(reason);
   }
   if (recommendation) {
-    link.addEventListener("click", () => {
-      void recordStoreEvent({ event_type: "recommendation_click", product_id: product.id });
+    if (storeMode === "live" && product.offer_id && recommendationObserver) {
+      recommendationObserver.observe(card);
+    }
+    link.addEventListener("click", async (event) => {
+      if (storeMode !== "live" || !product.offer_id) return;
+      event.preventDefault();
+      await recordRecommendationClick(product);
+      window.location.assign(link.href);
     });
   }
   return card;
@@ -309,7 +365,7 @@ async function renderRecommendations() {
   if (storeMode === "live") {
     try {
       recommendations = await loadLiveRecommendations();
-      target.dataset.anchor = "Picked from what you have been exploring";
+      target.dataset.anchor = recommendations[0]?.reason || "Recommendations for your visit";
       renderProductGrid(target, recommendations, true);
     } catch (error) {
       console.error("Unable to load live recommendations.", error);

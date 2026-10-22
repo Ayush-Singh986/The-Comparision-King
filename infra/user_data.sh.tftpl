@@ -23,6 +23,9 @@ BEDROCK_MODEL_ID=${bedrock_model_id}
 COGNITO_USER_POOL_ID=${cognito_user_pool_id}
 COGNITO_APP_CLIENT_ID=${cognito_app_client_id}
 STORE_SESSION_COOKIE_SECURE=${store_session_cookie_secure}
+EVENT_RETENTION_DAYS=90
+ANALYTICS_RETENTION_DAYS=30
+ORDER_RETENTION_DAYS=400
 WEB_DIRECTORY=/opt/northstar/web
 ENVVARS
 chmod 600 /etc/northstar.env
@@ -55,6 +58,39 @@ SERVICE
 chown -R ec2-user:ec2-user /opt/northstar /var/log/northstar
 systemctl daemon-reload
 systemctl enable --now northstar.service
+cat > /etc/systemd/system/northstar-retention.service <<'RETENTIONSERVICE'
+[Unit]
+Description=Prune expired Northstar analytics and order idempotency records
+After=network-online.target northstar.service
+
+[Service]
+Type=oneshot
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/opt/northstar/backend
+EnvironmentFile=/etc/northstar.env
+ExecStart=/opt/northstar/venv/bin/python cleanup_data.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+StandardOutput=append:/var/log/northstar/retention.log
+StandardError=append:/var/log/northstar/retention.log
+RETENTIONSERVICE
+cat > /etc/systemd/system/northstar-retention.timer <<'RETENTIONTIMER'
+[Unit]
+Description=Daily Northstar data-retention cleanup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+RETENTIONTIMER
+systemctl daemon-reload
+systemctl enable --now northstar-retention.timer
 
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCONFIG'
 {
@@ -66,6 +102,12 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCON
             "file_path": "/var/log/northstar/app.log",
             "log_group_name": "/${project_name}/application",
             "log_stream_name": "{instance_id}/application",
+            "retention_in_days": 30
+          },
+          {
+            "file_path": "/var/log/northstar/retention.log",
+            "log_group_name": "/${project_name}/retention",
+            "log_stream_name": "{instance_id}/retention",
             "retention_in_days": 30
           }
         ]

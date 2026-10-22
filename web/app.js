@@ -10,10 +10,8 @@ const detailDialog = document.querySelector("#detail-dialog");
 const detailAction = document.querySelector("#detail-action");
 let selectedFilter = "all";
 let toastTimeout;
-let searchTimeout;
 let currentActivityDays = 7;
 let accessToken = "";
-const exposedRecommendationIds = new Set();
 const catalogDivider = document.createElement("div");
 catalogDivider.className = "catalog-divider";
 catalogDivider.textContent = "More from the collection";
@@ -28,21 +26,10 @@ const productDescriptions = {
   "carbon-tripod": "A travel-ready carbon tripod for steady landscapes and low-light photos.",
   "field-drive": "A portable 1TB solid-state drive for backing up photos while traveling.",
 };
-const recommendationObserver = liveMode && "IntersectionObserver" in window
-  ? new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting || entry.intersectionRatio < 0.5) return;
-      const card = entry.target;
-      const productId = card.dataset.productId;
-      if (!productId || exposedRecommendationIds.has(productId)) return;
-      exposedRecommendationIds.add(productId);
-      recommendationObserver.unobserve(card);
-      recordEvent({ event_type: "recommendation_impression", product_id: productId });
-    });
-  }, { threshold: 0.5 })
-  : null;
-
 const today = new Date();
+document.querySelectorAll(".match-row > span").forEach((label) => {
+  label.textContent = "Ranking score (not probability)";
+});
 document.querySelector("#current-date").textContent = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   month: "long",
@@ -84,11 +71,6 @@ function showProductDetails(card) {
   detailDialog.dataset.relatedCategory = card.dataset.category;
   detailDialog.dataset.destination = "recommendations";
   detailDialog.showModal();
-
-  if (liveMode) {
-    recordEvent({ event_type: "product_view", product_id: productId });
-    if (isRecommendation) recordEvent({ event_type: "recommendation_click", product_id: productId });
-  }
 }
 
 function exploreRelatedProducts() {
@@ -118,21 +100,6 @@ function filterProducts() {
 
   emptyProducts.hidden = visibleCount > 0;
   catalogDivider.hidden = !productCards.some((card) => !card.hidden && card.dataset.recommendationKind === "catalog");
-  observeRecommendationCards();
-}
-
-function observeRecommendationCards() {
-  if (!liveMode) return;
-  productCards.forEach((card) => {
-    if (card.hidden || card.dataset.recommendationKind !== "recommended"
-      || exposedRecommendationIds.has(card.dataset.productId)) return;
-    if (recommendationObserver) {
-      recommendationObserver.observe(card);
-    } else {
-      exposedRecommendationIds.add(card.dataset.productId);
-      recordEvent({ event_type: "recommendation_impression", product_id: card.dataset.productId });
-    }
-  });
 }
 
 function updateActivityChart(activity, days) {
@@ -185,6 +152,47 @@ function updateSummary(data) {
   document.querySelector(".activity-summary > span:nth-child(2)").textContent = "store-wide interactions";
   updateActivityChart(data.activity, currentActivityDays);
   renderTrendingCategories(data.trending_categories);
+  renderExperiment(data.experiment);
+}
+
+function renderExperiment(experiment) {
+  if (!experiment) return;
+  const number = (value) => Number(value || 0).toLocaleString();
+  const percent = (value) => `${Number(value || 0).toFixed(2)}%`;
+  ["control", "treatment"].forEach((arm) => {
+    const metrics = experiment.arms[arm];
+    document.querySelector(`#experiment-${arm}-assigned`).textContent = number(metrics.assigned_sessions);
+    document.querySelector(`#experiment-${arm}-exposed`).textContent = number(metrics.exposed_sessions);
+    document.querySelector(`#experiment-${arm}-impressions`).textContent = number(metrics.impressions);
+    document.querySelector(`#experiment-${arm}-clicks`).textContent = number(metrics.clicks);
+    document.querySelector(`#experiment-${arm}-ctr`).textContent = percent(metrics.ctr_percent);
+    document.querySelector(`#experiment-${arm}-ctr-ci`).textContent =
+      formatInterval(metrics.ctr_95ci_percent);
+    document.querySelector(`#experiment-${arm}-orders`).textContent = number(metrics.purchasing_sessions);
+    document.querySelector(`#experiment-${arm}-conversion`).textContent = percent(metrics.conversion_percent);
+    document.querySelector(`#experiment-${arm}-sales`).textContent =
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      }).format(Number(metrics.gross_sales_usd || 0));
+    document.querySelector(`#experiment-${arm}-conversion-ci`).textContent =
+      formatInterval(metrics.conversion_95ci_percent);
+  });
+  function formatInterval(interval) {
+    return interval
+      ? `${Number(interval[0]).toFixed(2)}–${Number(interval[1]).toFixed(2)}%`
+      : "Not available";
+  }
+  const change = (value) => value === null
+    ? "Not available"
+    : `${value > 0 ? "+" : ""}${Number(value).toFixed(2)}%`;
+  document.querySelector("#experiment-ctr-change").textContent =
+    change(experiment.treatment_ctr_relative_change_percent);
+  document.querySelector("#experiment-conversion-change").textContent =
+    change(experiment.treatment_conversion_relative_change_percent);
+  document.querySelector("#experiment-caveat").textContent =
+    `${experiment.interpretation} Verified gross order value excludes refunds, cancellations, cost of goods, and payment fees. Wilson intervals are descriptive, not a significance test.`;
 }
 
 function renderTrendingCategories(categories) {
@@ -256,13 +264,14 @@ function updateRecommendedProducts(items) {
       maximumFractionDigits: 2,
     }).format(Number(item.price));
     card.querySelector(".product-meta > span").textContent = `★ ${Number(item.rating).toFixed(1)} · catalog`;
-    card.querySelector(".match-row > strong").textContent = `${Math.round(item.score * 100)}%`;
+    const rankingScore = Math.round(item.score * 100);
+    card.querySelector(".match-row > strong").textContent = `${rankingScore}/100`;
     card.querySelector(".match-row").hidden = false;
     card.querySelector(".match-track").hidden = false;
-    card.querySelector(".match-track i").style.width = `${Math.round(item.score * 100)}%`;
+    card.querySelector(".match-track i").style.width = `${rankingScore}%`;
     card.querySelector(".product-reason").textContent = `✳ ${item.reason}`;
     const badge = card.querySelector(".product-trend, .product-tag");
-    badge.textContent = `MATCH ${Math.round(item.score * 100)}%`;
+    badge.textContent = `RANK ${rankingScore}/100`;
     card.querySelector(".product-open").innerHTML = 'See why recommended <span aria-hidden="true">→</span>';
     card.hidden = false;
     card.style.order = String(index);
@@ -451,21 +460,6 @@ async function apiRequest(path, options = {}) {
   return body;
 }
 
-async function recordEvent(event) {
-  try {
-    const result = await apiRequest("/events", {
-      method: "POST",
-      body: JSON.stringify(event),
-    });
-    if (!result.metrics_queued) {
-      console.error(`Event ${result.event_id} was saved but its CloudWatch metric was not queued.`);
-    }
-  } catch (error) {
-    console.error("Customer activity could not be saved.", error);
-    if (error.statusCode !== 401) showToast("Customer activity could not be recorded. Check your connection.");
-  }
-}
-
 async function refreshLiveData(days = currentActivityDays) {
   const recommendations = await apiRequest("/recommendations");
   updateRecommendedProducts(recommendations.items);
@@ -588,12 +582,6 @@ function updateLocalActivityChart(isMonth) {
 
 searchInput.addEventListener("input", () => {
   filterProducts();
-  if (liveMode && searchInput.value.trim().length >= 2) {
-    window.clearTimeout(searchTimeout);
-    searchTimeout = window.setTimeout(() => {
-      recordEvent({ event_type: "search", query: searchInput.value.trim().slice(0, 128) });
-    }, 500);
-  }
 });
 
 filterButtons.forEach((button) => {
@@ -607,6 +595,7 @@ filterButtons.forEach((button) => {
 const navigationTitles = {
   overview: "Overview",
   recommendations: "Recommendations",
+  experiment: "Experiment results",
   customers: "Customers",
   trends: "Trending products",
   activity: "Event activity",
