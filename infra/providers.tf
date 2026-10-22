@@ -71,6 +71,7 @@ data "archive_file" "application" {
     ".git/**",
     ".gitignore",
     "README.md",
+    "RESUME.md",
     "index.html",
     "backend/tests/**",
     "**/__pycache__/**",

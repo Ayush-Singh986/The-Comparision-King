@@ -163,8 +163,9 @@ class RecommendationTests(unittest.TestCase):
 
     def test_store_session_cookie_is_opaque_http_only_and_secure_in_production(self):
         response = Response()
+        request = make_request(b"")
         with patch.dict(os.environ, {"STORE_SESSION_COOKIE_SECURE": "true"}):
-            result = application.create_store_session(response)
+            result = application.create_store_session(request, response)
 
         cookie = response.headers["set-cookie"].lower()
         self.assertEqual(result, {"created": True})
@@ -172,6 +173,19 @@ class RecommendationTests(unittest.TestCase):
         self.assertIn("secure", cookie)
         self.assertIn("samesite=lax", cookie)
         self.assertNotIn("session", json.dumps(result))
+
+    def test_store_session_endpoint_preserves_existing_valid_session(self):
+        session_id = "a" * 43
+        request = make_request(b"")
+        request.scope["headers"] = [
+            (b"cookie", f"northstar_store_session={session_id}".encode())
+        ]
+        response = Response()
+
+        result = application.create_store_session(request, response)
+
+        self.assertEqual(result, {"created": False})
+        self.assertNotIn("set-cookie", response.headers)
 
     def test_store_session_identity_is_taken_from_validated_cookie(self):
         request = Request({

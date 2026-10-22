@@ -723,9 +723,12 @@ def get_recommendations(
 
 
 @app.post("/api/store/session")
-def create_store_session(response: Response) -> dict[str, bool]:
-    session_id = secrets.token_urlsafe(32)
+def create_store_session(request: Request, response: Response) -> dict[str, bool]:
     response.headers["Cache-Control"] = "no-store"
+    session_id = request.cookies.get(STORE_SESSION_COOKIE, "")
+    if STORE_SESSION_PATTERN.fullmatch(session_id):
+        return {"created": False}
+    session_id = secrets.token_urlsafe(32)
     response.set_cookie(
         STORE_SESSION_COOKIE,
         session_id,

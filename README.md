@@ -1,5 +1,7 @@
 # Northstar Goods — Personalized Storefront
 
+[Resume bullets, project impact, and interview talking points](./RESUME.md)
+
 Northstar is a sample outdoor and camera-gear store with an eighteen-product catalog, category browsing, search, product pages, a browser-local bag, and a separate Cognito-protected operations dashboard. In the deployed environment, the storefront reads its catalog and recommendations from the FastAPI service and PostgreSQL; views, searches, impressions, and recommendation clicks are written to RDS. Recommendations use Amazon Bedrock only after a visitor has browsing/search history; a new visitor sees top-rated catalog picks without an initial model call.
 
 The storefront creates an anonymous, random, HTTP-only session cookie. It is pseudonymous, not an account identity; shoppers do not need to sign in. In direct-file offline preview, the local sample catalog and on-device recommendations are clearly labeled. The checkout remains a demo: no payment is collected, and the browser cannot submit purchase events. A trusted server-to-server order webhook can record verified orders after a separate checkout/payment integration is built and configured.
