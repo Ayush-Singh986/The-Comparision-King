@@ -1,7 +1,12 @@
+import asyncio
+import hashlib
+import hmac
 import json
 import os
+import time
 import unittest
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 os.environ.setdefault("AWS_REGION", "us-east-1")
@@ -18,6 +23,8 @@ import app as application
 import lambda_metrics
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 class RecommendationTests(unittest.TestCase):
@@ -154,6 +161,125 @@ class RecommendationTests(unittest.TestCase):
 
         self.assertEqual(error.exception.status_code, 403)
 
+    def test_store_session_cookie_is_opaque_http_only_and_secure_in_production(self):
+        response = Response()
+        with patch.dict(os.environ, {"STORE_SESSION_COOKIE_SECURE": "true"}):
+            result = application.create_store_session(response)
+
+        cookie = response.headers["set-cookie"].lower()
+        self.assertEqual(result, {"created": True})
+        self.assertIn("httponly", cookie)
+        self.assertIn("secure", cookie)
+        self.assertIn("samesite=lax", cookie)
+        self.assertNotIn("session", json.dumps(result))
+
+    def test_store_session_identity_is_taken_from_validated_cookie(self):
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"cookie", b"northstar_store_session=" + b"a" * 43)],
+            "query_string": b"",
+            "server": ("test", 80),
+            "client": ("127.0.0.1", 1234),
+            "scheme": "http",
+        })
+
+        self.assertEqual(application.require_store_session(request), "store:" + "a" * 43)
+
+    def test_empty_store_history_uses_catalog_without_invoking_bedrock(self):
+        database = MagicMock()
+        request = MagicMock()
+        request.headers.get.return_value = None
+        with (
+            patch.object(application, "read_customer_context", return_value=(0, [], self.products)),
+            patch.object(application.bedrock_client, "converse") as converse,
+        ):
+            result = application.get_recommendations("store:anonymous", request, database)
+
+        self.assertEqual(len(result["items"]), 2)
+        self.assertFalse(result["cache_hit"])
+        converse.assert_not_called()
+
+    def test_order_webhook_rejects_invalid_signature_before_database_access(self):
+        body = b'{"order_id":"order-1"}'
+        request = make_request(body)
+        pool = MagicMock()
+        timestamp = str(int(time.time()))
+        signature = "sha256=" + "0" * 64
+        with patch.object(application, "order_webhook_secret", "test-secret"):
+            with self.assertRaises(HTTPException) as error:
+                asyncio.run(
+                    application.ingest_order_webhook(
+                        request, "evt-1", timestamp, signature, pool
+                    )
+                )
+
+        self.assertEqual(error.exception.status_code, 401)
+        pool.connection.assert_not_called()
+
+    def test_order_webhook_verifies_signature_and_records_purchase(self):
+        payload = {
+            "order_id": "order-42",
+            "session_id": "a" * 43,
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "items": [{"product_id": "camera-x2", "quantity": 2}],
+        }
+        body = json.dumps(payload).encode()
+        timestamp = str(int(time.time()))
+        signature = "sha256=" + hmac.new(
+            b"test-secret",
+            timestamp.encode() + b"." + body,
+            hashlib.sha256,
+        ).hexdigest()
+        cursor = FakeOrderCursor()
+        pool = FakeOrderPool(cursor)
+        with (
+            patch.object(application, "order_webhook_secret", "test-secret"),
+            patch.object(application.lambda_client, "invoke", return_value={"StatusCode": 202}),
+        ):
+            result = asyncio.run(
+                application.ingest_order_webhook(
+                    make_request(body), "evt-42", timestamp, signature, pool
+                )
+            )
+
+        self.assertEqual(
+            result,
+            {"accepted": True, "duplicate": False, "metrics_queued": True},
+        )
+        self.assertTrue(any("INSERT INTO order_webhook_items" in stmt for stmt in cursor.statements))
+        self.assertIn("VALUES (%s, 'purchase', %s, %s)", cursor.statements[-1])
+
+    def test_order_webhook_redelivery_is_idempotent(self):
+        payload = {
+            "order_id": "order-42",
+            "session_id": "a" * 43,
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "items": [{"product_id": "camera-x2", "quantity": 2}],
+        }
+        body = json.dumps(payload).encode()
+        canonical_order = application.TrustedOrder.model_validate(payload).model_dump(mode="json")
+        canonical = json.dumps(canonical_order, sort_keys=True, separators=(",", ":"))
+        cursor = FakeOrderCursor(
+            prior={"event_id": "evt-42", "payload_sha256": hashlib.sha256(canonical.encode()).hexdigest()}
+        )
+        timestamp = str(int(time.time()))
+        signature = "sha256=" + hmac.new(
+            b"test-secret",
+            timestamp.encode() + b"." + body,
+            hashlib.sha256,
+        ).hexdigest()
+        with patch.object(application, "order_webhook_secret", "test-secret"):
+            result = asyncio.run(
+                application.ingest_order_webhook(
+                    make_request(body), "evt-42", timestamp, signature, FakeOrderPool(cursor)
+                )
+            )
+
+        self.assertEqual(result, {"accepted": True, "duplicate": True})
+        self.assertFalse(any("INSERT INTO customer_events" in stmt for stmt in cursor.statements))
+
 
 class MetricsLambdaTests(unittest.TestCase):
     def test_product_view_emits_event_and_product_metrics(self):
@@ -176,6 +302,90 @@ class MetricsLambdaTests(unittest.TestCase):
     def test_invalid_customer_event_fails(self):
         with self.assertRaises(ValueError):
             lambda_metrics.handler({"event_id": 1, "event_type": "unknown"}, None)
+
+
+def make_request(body):
+    delivered = False
+
+    async def receive():
+        nonlocal delivered
+        if delivered:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        delivered = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/webhooks/orders",
+            "headers": [],
+            "query_string": b"",
+            "server": ("test", 443),
+            "client": ("127.0.0.1", 1234),
+            "scheme": "https",
+        },
+        receive,
+    )
+
+
+class FakeOrderCursor:
+    def __init__(self, prior=None):
+        self.statement = ""
+        self.statements = []
+        self.prior = prior
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def execute(self, statement, parameters=None):
+        self.statement = statement
+        self.statements.append(statement)
+
+    def fetchall(self):
+        if "SELECT product_id FROM products" in self.statement:
+            return [{"product_id": "camera-x2"}]
+        return []
+
+    def fetchone(self):
+        if "RETURNING event_id" in self.statement:
+            return None if self.prior else {"event_id": "evt-42"}
+        if "SELECT event_id, payload_sha256 FROM order_webhook_events" in self.statement:
+            return self.prior
+        if "RETURNING id" in self.statement:
+            return {"id": 42}
+        return None
+
+
+class FakeOrderConnection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def cursor(self):
+        return self._cursor
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
+
+
+class FakeOrderPool:
+    def __init__(self, cursor):
+        self._connection = FakeOrderConnection(cursor)
+
+    def connection(self):
+        return self._connection
 
 
 if __name__ == "__main__":

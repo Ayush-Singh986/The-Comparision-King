@@ -79,6 +79,24 @@ resource "aws_secretsmanager_secret_version" "application_db" {
   })
 }
 
+resource "random_password" "order_webhook" {
+  length           = 64
+  special          = false
+  override_special = ""
+}
+
+resource "aws_secretsmanager_secret" "order_webhook" {
+  name                    = "${var.project_name}/order-webhook"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "order_webhook" {
+  secret_id = aws_secretsmanager_secret.order_webhook.id
+  secret_string = jsonencode({
+    webhook_secret = random_password.order_webhook.result
+  })
+}
+
 resource "aws_s3_bucket" "artifacts" {
   bucket        = "${var.project_name}-${data.aws_caller_identity.current.account_id}-${random_id.suffix.hex}"
   force_destroy = true

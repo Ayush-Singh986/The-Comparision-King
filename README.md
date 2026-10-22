@@ -1,10 +1,8 @@
 # Northstar Goods — Personalized Storefront
 
-Northstar now opens as a shopper-facing outdoor and camera gear store. The home page has a real storefront layout, category browsing, search, sorting, product detail pages, a persistent shopping bag, and recommendations that respond to recent views. Its catalog has eighteen sample products across photography, outdoor, and accessories. Store operations are separate at `web/dashboard.html`; the Terraform stack places both experiences behind CloudFront and an Application Load Balancer, runs them on EC2, and adds Cognito, RDS, Bedrock recommendations for signed-in dashboard users, event-driven Lambda metrics, and CloudWatch alarms.
+Northstar is a sample outdoor and camera-gear store with an eighteen-product catalog, category browsing, search, product pages, a browser-local bag, and a separate Cognito-protected operations dashboard. In the deployed environment, the storefront reads its catalog and recommendations from the FastAPI service and PostgreSQL; views, searches, impressions, and recommendation clicks are written to RDS. Recommendations use Amazon Bedrock only after a visitor has browsing/search history; a new visitor sees top-rated catalog picks without an initial model call.
 
-The storefront opens locally with an eighteen-product demo catalog and product photography. Browsing history and the bag are saved in that browser. The checkout is intentionally a demonstration only: there is no inventory reservation, order service, or payment processing. The AWS operations dashboard uses Cognito and has separate navigation from the store.
-
-On the local storefront, recommendation picks use the most recently viewed category as a simple on-device demo. On the operations dashboard, authenticated live recommendations use the customer's recent event history and Amazon Bedrock against the database catalog. Live personalized recommendations have not yet been integrated into the anonymous storefront API.
+The storefront creates an anonymous, random, HTTP-only session cookie. It is pseudonymous, not an account identity; shoppers do not need to sign in. In direct-file offline preview, the local sample catalog and on-device recommendations are clearly labeled. The checkout remains a demo: no payment is collected, and the browser cannot submit purchase events. A trusted server-to-server order webhook can record verified orders after a separate checkout/payment integration is built and configured.
 
 ## Why this project
 
@@ -18,7 +16,7 @@ The traditional product-only approach asks shoppers to find items themselves. As
 
 The web application runs on EC2 instances, with an Application Load Balancer distributing requests and health-checking the application as traffic changes. When a shopper views a product, searches, or opens a recommendation, the API records that event in Amazon RDS for PostgreSQL. Its relational tables connect customer behavior with products in the store catalog.
 
-When a recommendation is needed, the application reads the customer's recent browsing/search context and candidate products from RDS, then asks Amazon Bedrock to select relevant products from that supplied catalog. For example, camera and hiking interest can help Bedrock rank a catalog camera, lens, or camera bag. The application—not Bedrock—supplies the store-specific products and customer history. As more consented activity is collected, the prompt can include richer, recent context. Bedrock is not fine-tuned on this data and the application rejects product IDs that are not in its catalog.
+When a shopper has browsing or search history, the application reads that recent context and candidate products from RDS, then asks Amazon Bedrock to select relevant products from the supplied catalog. For example, camera and hiking interest can help Bedrock rank a catalog camera, lens, or camera bag. The application—not Bedrock—supplies the store-specific products and customer history, and rejects product IDs that are not in the catalog. Visitors without history receive top-rated catalog picks without a Bedrock request. Consent, data minimization, and retention requirements must be set for the real business before collecting real customer data.
 
 Repeated recommendations can be served from a short-lived cache to reduce model calls, latency, and cost. Lambda runs only when the application invokes it after recording a customer event; that function publishes event metrics to CloudWatch. CloudWatch tracks event volume, clicks/impressions, request latency, errors, and database health, and raises alarms for sustained degradation or unusual activity. The business goal is better discovery, a smoother customer experience, and more conversions; those outcomes must be measured with verified orders and controlled experiments rather than assumed from a model response.
 
@@ -27,7 +25,7 @@ Repeated recommendations can be served from a short-lived cache to reduce model 
 ```mermaid
 flowchart LR
     Shopper["Shopper's browser"]
-    Login["Amazon Cognito\nOAuth 2.0 + PKCE"]
+    Login["Amazon Cognito\nadmin sign-in"]
     Edge["Amazon CloudFront\nHTTPS edge"]
     ALB["Application Load Balancer\nCloudFront-only origin"]
     App["EC2 Auto Scaling\nFastAPI + storefront + dashboard"]
@@ -38,13 +36,17 @@ flowchart LR
     CW["Amazon CloudWatch\nlogs, dashboard, alarms"]
     SNS["Amazon SNS\noptional email alerts"]
     S3["Private Amazon S3\napplication release artifact"]
+    Orders["Trusted checkout / order provider"]
 
     Shopper -->|"HTTPS storefront"| Edge
-    Shopper -->|"admin sign in / access token"| Login
-    Shopper -->|"HTTPS operations dashboard + API"| Edge
+    Shopper -->|"HTTPS anonymous storefront + session cookie"| Edge
+    Shopper -->|"admin sign-in"| Login
+    Shopper -->|"HTTPS operations dashboard"| Edge
+    Orders -->|"HMAC-signed order event"| Edge
     Edge -->|"verified origin request"| ALB
     ALB -->|"health-checked traffic"| App
     App -->|"record view / search / click"| DB
+    App -->|"validate, deduplicate, record purchase"| DB
     App -->|"history + catalog context"| DB
     App -->|"new result"| Bedrock
     App <-->|"customer + event key"| Cache
@@ -61,27 +63,26 @@ The application instances and database sit in private subnets across two Availab
 
 ### End-to-end request and data flow
 
-1. A shopper opens the CloudFront HTTPS URL and signs in through Cognito's hosted sign-in page. The browser uses OAuth authorization code flow with PKCE; the API validates the Cognito access token and derives the customer identity from its verified `sub` claim.
-2. The browser sends product recommendation and event requests to the same-origin API. CloudFront routes them through the ALB to a healthy EC2 application instance.
-3. The FastAPI application stores customer searches, product views, recommendation impressions, and recommendation clicks in RDS PostgreSQL. The database is relational: customer events reference product records and are indexed by customer and time.
-4. For a recommendation request, the application retrieves that customer's recent views, searches, and purchase history (when supplied by a trusted order integration), along with available catalog items from RDS. It passes only that context and the catalog to Bedrock. Bedrock is instructed to choose IDs from the supplied catalog; the application checks the returned IDs and scores before displaying them.
-5. Valid results are cached in memory on the EC2 instance for up to five minutes. The cache key includes the latest relevant customer event, so new browsing/search activity naturally results in a new recommendation request. This cache is per instance, not shared across the Auto Scaling group; a future shared cache could use ElastiCache.
-6. After an event is committed to RDS, the application asynchronously invokes a small Lambda function to publish event-count metrics. Lambda runs only when invoked. The application and AWS services also produce logs and infrastructure metrics in CloudWatch.
-7. A CloudWatch dashboard shows event volume, ALB latency/errors, and RDS CPU. Alarms cover sustained API errors/latency, high database CPU, low recommendation click-through rate (when there is enough traffic), unusual camera interest, and Lambda metric errors. An optional SNS email subscription sends notifications.
+1. A shopper opens the HTTPS storefront. The API creates an opaque random session cookie marked `HttpOnly` and `SameSite=Lax`; production also marks it `Secure`. Customer account login is not required for browsing. Administrators sign in separately through Cognito's OAuth authorization-code flow with PKCE.
+2. The storefront fetches the catalog from RDS through the API and records product views, searches, recommendation impressions, and clicks against that session. The server derives the session identity only from its cookie; the browser cannot submit a purchase event.
+3. For a new session, the API returns top-rated catalog picks without invoking Bedrock. Once a visitor has history, it supplies recent activity and available catalog items to Bedrock. Results are validated and cached in process for five minutes; a database-backed per-session limit caps recommendation requests at eight per minute. The in-memory cache is not shared between EC2 nodes.
+4. When an order is completed by a separately configured trusted checkout/order service, that service posts to `/api/webhooks/orders` with an HMAC-SHA256 signature, timestamp, and unique event ID. The API rejects invalid/stale signatures, unknown catalog IDs, malformed data, and changed payloads reusing an event ID. It commits the order and purchase events to RDS in one transaction; a duplicate delivery is idempotent. The webhook records an order but does not capture payment or implement checkout.
+5. After customer or purchase activity is committed, the API asynchronously invokes Lambda to publish event metrics to CloudWatch. CloudWatch also receives application, load balancer, and database telemetry and can route alarms through SNS.
 
 ### What is real and what is illustrative
 
 - The storefront in `web/index.html` works locally with the sample catalog and needs no AWS credentials. The product detail view is `web/product.html`; the shopping bag is `web/cart.html`.
-- The operations dashboard is a separate page at `web/dashboard.html`. Terraform also deploys the authenticated FastAPI API, an EC2 Auto Scaling group, a private multi-AZ PostgreSQL database, Cognito, Bedrock access, an event-metrics Lambda, and CloudWatch monitoring.
+- The deployed storefront reads its catalog from `/api/store/catalog`, issues an anonymous session through `/api/store/session`, and records shopper activity through `/api/store/events`. A separate recommendation endpoint uses Bedrock after there is session history; it enforces a database-backed session quota and CloudFront WAF adds an IP-based edge limit.
+- The operations dashboard is a separate page at `web/dashboard.html`. Terraform deploys the FastAPI API, an EC2 Auto Scaling group, a private multi-AZ PostgreSQL database, Cognito-protected admin access, Bedrock, an event-metrics Lambda, CloudFront WAF rate limiting, and CloudWatch monitoring.
 - The database is seeded with eighteen example products at application startup. Replace the seed catalog in `backend/app.py` and add a controlled import/update workflow for a real store catalog.
-- The local storefront's bag and browsing history use browser storage only. The authenticated dashboard can record searches, product views, recommendation impressions, and clicks. **Verified purchase ingestion is intentionally not exposed as a customer-submitted event**: connect a trusted checkout/order webhook or server-side order service before using sales/conversion reporting. The database and metrics schema reserve the `purchase` event for that integration.
+- The storefront bag remains in browser storage and checkout is still a demo. Product views, searches, recommendation impressions, and clicks use a random, HTTP-only session cookie in the deployed app. **Purchase events are accepted only through the HMAC-authenticated server-to-server order webhook**; there is no browser purchase API.
 - Recommendation summaries are generated by Bedrock from store data supplied in each request; the model is not fine-tuned on the store and does not automatically discover its catalog.
 - The CloudWatch event counters are asynchronously delivered and can be delayed or retried. Use the database as the source of truth for reconciled business reporting.
-- The shopper storefront is separate from store operations. Its demo checkout does not create orders or collect payment. Connecting a real checkout, catalog inventory, and anonymous-shopper recommendation API is a follow-up integration. Store-wide dashboard analytics are limited to Cognito users in the `store-admins` group.
+- The store does not include a payment provider, inventory reservation, or production checkout adapter. Build a trusted integration that sends completed order events only after your chosen provider confirms payment. Store-wide dashboard analytics are limited to Cognito users in the `store-admins` group.
 
 ## Deploy to AWS
 
-This is a production-oriented **reference deployment**, not a substitute for reviewing your account limits, compliance requirements, data retention, network policy, model access, incident response, and cost plan. Applying this Terraform creates billable infrastructure. In particular, the two NAT Gateways, public ALB, CloudFront distribution, two minimum EC2 instances, Multi-AZ RDS instance, backups, logs, and Bedrock usage can cost money even with light traffic. Check the AWS Pricing Calculator before deployment.
+This is a **reference deployment**, not a substitute for reviewing your account limits, compliance requirements, data retention, network policy, model access, incident response, and cost plan. Applying this Terraform creates billable infrastructure. A rough low-traffic baseline in `us-east-1` is **about $250–$450/month before data transfer, CloudFront requests, Bedrock tokens, and optional alert delivery**. The dominant fixed costs are two NAT Gateways (about $66/month before data processing), the public ALB (about $16/month before capacity units), two minimum `t3.small` instances (about $30/month before storage), and Multi-AZ `db.t4g.medium` RDS (roughly $100–$200/month depending on pricing/backup settings). CloudFront WAF adds a separate monthly charge. These are planning estimates, not an AWS quote; verify every line item in the AWS Pricing Calculator and the actual Terraform plan. Costs vary by region, traffic, and AWS price changes. Do not apply until you have reviewed and approved the estimate.
 
 ### 1. Prepare tools, account, and model access
 
@@ -131,9 +132,9 @@ Read the complete plan and cost impact before applying. The stack provisions:
 
 - A VPC with public ALB subnets and private application/database subnets across two AZs, per-AZ NAT gateways for resilient outbound access, and an S3 gateway endpoint.
 - CloudFront HTTPS, an ALB restricted to CloudFront origins, an encrypted private S3 deployment-artifact bucket, and EC2 instances with IMDSv2, Systems Manager access, encrypted storage, and automatic CPU-based scaling.
-- An encrypted, private PostgreSQL RDS instance with Multi-AZ failover, backups, CloudWatch PostgreSQL logs, enhanced monitoring, and deletion protection. RDS manages its master secret; Terraform creates a separate application database login secret.
+- An encrypted, private PostgreSQL RDS instance with Multi-AZ failover, backups, CloudWatch PostgreSQL logs, enhanced monitoring, and deletion protection. RDS manages its master secret; Terraform creates application-database and order-webhook secrets.
 - Cognito hosted UI sign-in and a public OAuth client that uses PKCE. User self-sign-up is disabled; only users in the `store-admins` group can read store-wide analytics.
-- Narrow application and Lambda IAM roles, a Bedrock invocation policy, an asynchronous custom-metrics Lambda, CloudWatch dashboards/alarms, an SNS alarm topic, and an optional email subscription.
+- Narrow application and Lambda IAM roles, a Bedrock invocation policy, an asynchronous custom-metrics Lambda, a CloudFront WAF recommendation rate rule, CloudWatch dashboards/alarms, an SNS alarm topic, and an optional email subscription.
 
 ### 4. Create AWS resources
 
@@ -144,6 +145,7 @@ terraform apply northstar.tfplan
 terraform output storefront_url
 terraform output dashboard_url
 terraform output cognito_user_pool_id
+terraform output order_webhook_secret_arn
 terraform output cloudwatch_dashboard_name
 ```
 
@@ -159,7 +161,51 @@ aws cognito-idp admin-create-user --user-pool-id $PoolId --username "you@example
 aws cognito-idp admin-add-user-to-group --user-pool-id $PoolId --username "you@example.com" --group-name store-admins
 ```
 
-Open `storefront_url` to browse the store demo, view product pages, and add items to the local demo bag. Checkout does not place an order. Open `dashboard_url` to sign in to store operations and change the temporary password if prompted. Search for a product or open a recommendation, then refresh the dashboard. Authenticated dashboard events will be stored in RDS, recommendations will be generated by Bedrock, and CloudWatch event metrics will arrive asynchronously. To receive alarm email, confirm the SNS subscription message sent to `alert_email`.
+Open `storefront_url` to load the live RDS catalog, browse product pages, and add items to the local demo bag. Views and searches are tied to an opaque session cookie; after activity is recorded, live recommendations may invoke Bedrock. Checkout still does not place an order or collect payment. Open `dashboard_url` to sign in to store operations and change the temporary password if prompted. To receive alarm email, confirm the SNS subscription message sent to `alert_email`.
+
+To connect a trusted order service, retrieve the webhook secret only in that server-side integration's secure secret store (never in browser code, source control, or logs):
+
+```powershell
+$WebhookSecretArn = terraform output -raw order_webhook_secret_arn
+aws secretsmanager get-secret-value --secret-id $WebhookSecretArn --query SecretString --output text
+```
+
+The JSON secret has a `webhook_secret` value. Sign each exact UTF-8 request body as `HMAC-SHA256(secret, unix_timestamp + "." + body)` and send the hex digest in `X-Webhook-Signature: sha256=<hex>`, along with `X-Webhook-Timestamp` (Unix seconds) and a stable unique `X-Webhook-Event-Id`. Send JSON to `/api/webhooks/orders`:
+
+```json
+{
+  "order_id": "store-order-123",
+  "session_id": "the opaque storefront session id, if available",
+  "occurred_at": "2024-01-01T12:00:00Z",
+  "items": [{"product_id": "camera-x2", "quantity": 1}]
+}
+```
+
+Only a trusted backend should send this request, after payment/order verification. Retries must reuse the same event ID and equivalent JSON payload; changed payloads with a reused event ID are rejected. The API commits the order and purchase events to RDS and returns whether asynchronous metrics were queued. The webhook does not authorize a payment or implement refunds, cancellations, inventory, or checkout.
+
+### Store API boundary
+
+| Route | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/store/catalog` | Public | Read the catalog from RDS. |
+| `POST /api/store/session` | Public | Issue the opaque, HTTP-only storefront session cookie. |
+| `POST /api/store/events` | Store session cookie | Record views, searches, recommendation impressions, or clicks. Browser purchase events are rejected by the schema. |
+| `GET /api/store/recommendations` | Store session cookie | Return catalog picks, or Bedrock suggestions after the session has activity. |
+| `POST /api/webhooks/orders` | Server-to-server HMAC | Idempotently record verified orders and purchase events. |
+| `GET /api/recommendations`, `POST /api/events`, `GET /api/summary` | Cognito access token | Admin/customer API; summary is restricted to `store-admins`. |
+
+### CI and recovery checks
+
+GitHub Actions runs the Python API/Lambda tests, Python compilation, JavaScript syntax checks, recursive `terraform fmt -check`, and Terraform validate without AWS credentials or an AWS apply. This catches deterministic regression errors but does **not** certify production load, model quality, or disaster recovery.
+
+Before launch, perform and record an RDS restore drill in a non-production window:
+
+1. Choose a recent automated backup or manual snapshot and restore it to a **new, temporary** RDS instance. Never restore over the production database for a drill.
+2. Keep the restored instance private and allow access only from an isolated test application or a controlled operator session. Verify schema, product rows, recent events, and order/item rows against known test records.
+3. Point an isolated test app at the restored endpoint and exercise health, catalog, and a recommendation request. Record elapsed restore and validation time as the observed RTO; use the backup point to calculate observed RPO.
+4. Remove the temporary instance and test artifacts after recording results. Retain the production snapshot and backups according to the approved data-retention policy.
+
+Terraform configures a 14-day RDS backup retention period, but no restore drill has been run by CI or by this change. Establish explicit RPO/RTO targets and repeat the drill after database or infrastructure changes.
 
 For administrators, inspect the CloudWatch dashboard named by `cloudwatch_dashboard_name`. The initial traffic baseline for anomaly detection is learned over time; do not expect anomaly alarms to be meaningful immediately after deployment.
 
@@ -188,7 +234,7 @@ For local backend development, create a Python 3.12 virtual environment, install
 python -m uvicorn app:app --app-dir backend --reload
 ```
 
-The API stores its schema and eighteen seed products at startup. A local database, valid Cognito access token, Bedrock model permission, and the event-metrics Lambda ARN are needed to exercise live endpoints.
+The API initializes its schema and eighteen seed products at startup. The live storefront API additionally needs a local PostgreSQL database and the AWS/database environment variables described in `infra/user_data.sh.tftpl`; Bedrock and the metrics Lambda are needed for personalized results and CloudWatch metrics. Set `ORDER_WEBHOOK_SECRET_ARN` to a Secrets Manager JSON secret with a `webhook_secret` property to enable order ingestion. Keep `STORE_SESSION_COOKIE_SECURE=false` only for local HTTP development; production sets it to `true`.
 
 Run the focused API and Lambda tests from `backend`:
 
@@ -199,4 +245,4 @@ python -m unittest discover -s tests -v
 
 ## Important production follow-ups
 
-Before using this with a real store, ingest the real catalog and verified orders through trusted server-side integrations; add catalog management and migrations; configure consent, data minimization, retention/deletion policies, and database restore drills; review Cognito account policies/MFA; and test load, Bedrock output quality, abuse limits, privacy, and account-specific AWS quotas. The dashboard's product/event data remains a small reference catalog until those integrations are built.
+The reference catalog is seed data, not an inventory system. Before using real commerce data, integrate and reconcile the actual catalog, payment-confirmed orders, customer-consent policy, deletion/retention workflow, and legal/privacy requirements; plan schema migrations instead of editing tables manually. Review Cognito administrator MFA/account recovery, load and Bedrock quality, error budgets, AWS quotas, cost alarms, and the CloudFront WAF limit against expected traffic. Add distributed caching only if measured traffic and model costs justify it. A real checkout, payment capture, refund/cancellation flow, inventory, and customer account lifecycle are not implemented here.

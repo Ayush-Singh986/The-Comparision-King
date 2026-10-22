@@ -17,10 +17,12 @@ DB_PORT=5432
 DB_NAME=northstar
 DB_MASTER_SECRET_ARN=${db_master_secret_arn}
 DB_APP_SECRET_ARN=${db_app_secret_arn}
+ORDER_WEBHOOK_SECRET_ARN=${order_webhook_secret_arn}
 METRICS_LAMBDA_ARN=${metrics_lambda_arn}
 BEDROCK_MODEL_ID=${bedrock_model_id}
 COGNITO_USER_POOL_ID=${cognito_user_pool_id}
 COGNITO_APP_CLIENT_ID=${cognito_app_client_id}
+STORE_SESSION_COOKIE_SECURE=${store_session_cookie_secure}
 WEB_DIRECTORY=/opt/northstar/web
 ENVVARS
 chmod 600 /etc/northstar.env

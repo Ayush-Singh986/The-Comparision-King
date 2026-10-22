@@ -33,6 +33,11 @@ output "rds_endpoint" {
   value       = aws_db_instance.main.address
 }
 
+output "order_webhook_secret_arn" {
+  description = "Use this secret ARN when configuring the trusted order integration."
+  value       = aws_secretsmanager_secret.order_webhook.arn
+}
+
 output "cloudwatch_dashboard_name" {
   description = "CloudWatch operations dashboard name."
   value       = aws_cloudwatch_dashboard.main.dashboard_name

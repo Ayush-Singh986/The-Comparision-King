@@ -28,6 +28,11 @@ provider "aws" {
   }
 }
 
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
@@ -61,8 +66,12 @@ data "archive_file" "application" {
   output_path = "${path.module}/northstar-app.zip"
   excludes = [
     "infra/**",
+    ".github/**",
     ".qodo/**",
     ".git/**",
+    ".gitignore",
+    "README.md",
+    "index.html",
     "backend/tests/**",
     "**/__pycache__/**",
     "**/*.pyc",

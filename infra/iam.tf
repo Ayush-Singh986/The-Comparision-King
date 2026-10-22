@@ -40,7 +40,8 @@ resource "aws_iam_role_policy" "application" {
         Action = ["secretsmanager:GetSecretValue"]
         Resource = [
           aws_db_instance.main.master_user_secret[0].secret_arn,
-          aws_secretsmanager_secret.application_db.arn
+          aws_secretsmanager_secret.application_db.arn,
+          aws_secretsmanager_secret.order_webhook.arn
         ]
       },
       {

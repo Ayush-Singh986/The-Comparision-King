@@ -21,6 +21,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #708057; outline-offset: 3px; }
 .announcement { align-items: center; background: var(--dark); color: #f6f5ef; display: flex; font-size: 10px; font-weight: 500; justify-content: center; letter-spacing: .3px; min-height: 31px; padding: 5px 16px; text-align: center; }
 .store-header { align-items: center; background: #fbfaf7ed; border-bottom: 1px solid #eae8e1; display: flex; height: 78px; justify-content: space-between; padding: 0 max(5vw, calc((100vw - 1320px) / 2)); position: sticky; top: 0; z-index: 5; }
+.store-status { background: #fff1d9; border-bottom: 1px solid #e7d5b2; color: #6c5429; font-size: 11px; line-height: 1.5; padding: 10px 5vw; text-align: center; }
+.store-status[hidden] { display: none; }
 .store-logo { color: #30382e; display: inline-flex; flex-direction: column; font: 800 23px "Manrope", sans-serif; letter-spacing: -1.3px; line-height: .95; }
 .store-logo > .logo-word { color: #30382e; display: block; }
 .store-logo > .logo-word > span { color: #78906a; }
@@ -103,6 +105,7 @@ h1, h2, h3, p { margin-top: 0; }
 .quick-add { align-items: center; background: #faf9f4; border: 0; border-radius: 50%; bottom: 11px; color: #3d4a38; cursor: pointer; display: flex; font-size: 20px; height: 34px; justify-content: center; opacity: 0; position: absolute; right: 11px; transform: translateY(5px); transition: opacity .17s, transform .17s; width: 34px; z-index: 2; }
 .shop-card:hover .quick-add, .quick-add:focus-visible { opacity: 1; transform: translateY(0); }
 .shop-card-details { padding: 12px 1px 4px; }
+.recommendation-reason { color: #73776c; font-size: 9px; line-height: 1.5; margin: 3px 0 0; }
 .card-category { color: #97988e; display: block; font-size: 8px; letter-spacing: .8px; text-transform: uppercase; }
 .card-name { color: #41443b; display: block; font-size: 10px; font-weight: 600; line-height: 1.5; margin: 5px 0 8px; }
 .card-name:hover { color: #657750; }

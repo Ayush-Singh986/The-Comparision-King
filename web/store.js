@@ -1,4 +1,4 @@
-const products = [
+let products = [
   { id: "camera-x2", name: "Summit Mirrorless Camera X2", category: "Camera gear", price: 849, rating: 4.9, reviews: 284, emoji: "📷", image: "photo-1516035069371-29a1b244cc32", art: "art-camera", label: "BESTSELLER", colors: ["#dce6d8", "#a9b9a2"], description: "A brilliant little camera for big days out. Weather-sealed, travel-ready, and just as happy capturing a quiet morning as a summit sunrise.", details: ["26 MP back-illuminated sensor", "Weather-sealed magnesium body", "Two-day battery life"] },
   { id: "trail-pack-28", name: "Trailblazer 28L Daypack", category: "Outdoor", price: 94, rating: 4.8, reviews: 192, emoji: "🎒", image: "photo-1553062407-98eeb64c6a62", art: "art-pack", label: "CUSTOMER FAVORITE", colors: ["#e5e8d8", "#bdc7a8"], description: "The just-right daypack: enough room for a camera, lunch, and an extra layer, without making the walk feel like work.", details: ["28-liter everyday capacity", "Padded camera-friendly sleeve", "Recycled, water-resistant fabric"] },
   { id: "prime-lens-50", name: "Peak 50mm Prime Lens", category: "Camera gear", price: 329, rating: 4.9, reviews: 156, emoji: "🔭", image: "photo-1502920917128-1aa500764cbd", art: "art-lens", label: "PAIRING PICK", colors: ["#e8e5d9", "#c7c2b4"], description: "A lovely, bright prime lens for portraits and low-light moments. Small enough to stay on the camera all weekend.", details: ["Bright f/1.8 aperture", "Quiet, quick autofocus", "Compact metal construction"] },
@@ -22,6 +22,9 @@ const products = [
 const CART_KEY = "northstar.store.cart";
 const HISTORY_KEY = "northstar.store.history";
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+let storeMode = "offline";
+let searchEventTimeout;
+let recommendations = [];
 
 function readStored(key, fallback) {
   try {
@@ -44,6 +47,90 @@ function writeStored(key, value) {
 
 function getProduct(id) {
   return products.find((product) => product.id === id);
+}
+
+function showStoreAlert(message) {
+  let alert = document.querySelector("#store-status");
+  if (!alert) {
+    alert = document.createElement("div");
+    alert.id = "store-status";
+    alert.className = "store-status";
+    alert.setAttribute("role", "status");
+    document.querySelector(".store-header")?.after(alert);
+  }
+  alert.textContent = message;
+  alert.hidden = !message;
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`/api/store/${path}`, {
+    credentials: "same-origin",
+    ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Store API request failed (${response.status}).`);
+  }
+  return response.json();
+}
+
+async function recordStoreEvent(event) {
+  if (storeMode !== "live") return;
+  try {
+    await apiRequest("events", { method: "POST", body: JSON.stringify(event), keepalive: true });
+  } catch (error) {
+    console.error("Unable to record storefront activity.", error);
+    showStoreAlert("Some browsing activity could not be saved. Recommendations may be less personal.");
+  }
+}
+
+async function loadLiveCatalog() {
+  const catalog = await apiRequest("catalog");
+  const displayProducts = new Map(products.map((product) => [product.id, product]));
+  products = catalog.items.map((item) => {
+    const presentation = displayProducts.get(item.product_id) || {
+      reviews: 0,
+      image: "photo-1516035069371-29a1b244cc32",
+      art: "art-camera",
+      label: "IN THE COLLECTION",
+      colors: ["#dce6d8", "#a9b9a2"],
+      description: `${item.name} from our ${item.category} collection.`,
+      details: [],
+    };
+    return {
+      ...presentation,
+      id: item.product_id,
+      name: item.name,
+      category: item.category,
+      price: item.price,
+      rating: item.rating,
+      emoji: item.emoji || presentation.emoji || "✳",
+    };
+  });
+  const count = document.querySelector("#store-product-count");
+  if (count) count.textContent = `${products.length} PIECES`;
+}
+
+async function loadLiveRecommendations() {
+  const response = await apiRequest("recommendations");
+  const items = response.items.map((item) => ({
+    ...(getProduct(item.product_id) || {
+      id: item.product_id,
+      reviews: 0,
+      image: "photo-1516035069371-29a1b244cc32",
+      art: "art-camera",
+      label: "IN THE COLLECTION",
+      colors: ["#dce6d8", "#a9b9a2"],
+      details: [],
+    }),
+    ...item,
+    id: item.product_id,
+  }));
+  items.forEach((item) => {
+    void recordStoreEvent({ event_type: "recommendation_impression", product_id: item.id });
+  });
+  return items;
 }
 
 function getCart() {
@@ -134,6 +221,17 @@ function productCard(product, recommendation = false) {
   meta.append(price, rating);
   details.append(category, name, meta);
   card.append(details);
+  if (recommendation && product.reason) {
+    const reason = document.createElement("p");
+    reason.className = "recommendation-reason";
+    reason.textContent = product.reason;
+    details.append(reason);
+  }
+  if (recommendation) {
+    link.addEventListener("click", () => {
+      void recordStoreEvent({ event_type: "recommendation_click", product_id: product.id });
+    });
+  }
   return card;
 }
 
@@ -173,7 +271,16 @@ function renderHome() {
     category = tab.dataset.category;
     update();
   }));
-  search.addEventListener("input", update);
+  search.addEventListener("input", () => {
+    update();
+    window.clearTimeout(searchEventTimeout);
+    const query = search.value.trim();
+    if (query) {
+      searchEventTimeout = window.setTimeout(() => {
+        void recordStoreEvent({ event_type: "search", query });
+      }, 600);
+    }
+  });
   sort.addEventListener("change", update);
   document.querySelectorAll("[data-show-all]").forEach((link) => link.addEventListener("click", () => {
     category = "all";
@@ -181,7 +288,7 @@ function renderHome() {
     update();
   }));
   update();
-  renderRecommendations();
+  void renderRecommendations();
 }
 
 document.querySelectorAll("[data-category-link]").forEach((link) => {
@@ -196,9 +303,25 @@ function rememberProduct(product) {
   writeStored(HISTORY_KEY, next);
 }
 
-function renderRecommendations() {
+async function renderRecommendations() {
   const target = document.querySelector("#store-recommendations");
   if (!target) return;
+  if (storeMode === "live") {
+    try {
+      recommendations = await loadLiveRecommendations();
+      target.dataset.anchor = "Picked from what you have been exploring";
+      renderProductGrid(target, recommendations, true);
+    } catch (error) {
+      console.error("Unable to load live recommendations.", error);
+      target.replaceChildren();
+      showStoreAlert("Live recommendations are unavailable right now. Please try again shortly.");
+    }
+    return;
+  }
+  if (storeMode === "unavailable") {
+    target.replaceChildren();
+    return;
+  }
   const history = readStored(HISTORY_KEY, []).map(getProduct).filter(Boolean);
   const anchor = history[0];
   const recommendations = products
@@ -223,6 +346,7 @@ function renderProductPage() {
     return;
   }
   rememberProduct(product);
+  void recordStoreEvent({ event_type: "product_view", product_id: product.id });
   document.title = `${product.name} — Northstar Goods`;
   document.querySelector("#product-breadcrumb").textContent = product.name;
   const layout = document.createElement("section");
@@ -387,8 +511,25 @@ function initializeSearchShortcut() {
   });
 }
 
-updateCartCount();
-initializeSearchShortcut();
-if (document.body.dataset.page === "home") renderHome();
-if (document.body.dataset.page === "product") renderProductPage();
-if (document.body.dataset.page === "cart") renderCart();
+async function initializeStore() {
+  updateCartCount();
+  initializeSearchShortcut();
+  if (window.location.protocol !== "file:") {
+    try {
+      await apiRequest("session", { method: "POST", body: "{}" });
+      await loadLiveCatalog();
+      storeMode = "live";
+    } catch (error) {
+      storeMode = "unavailable";
+      console.error("Unable to connect to the live store API.", error);
+      showStoreAlert("The live store service is unavailable. Displaying the sample catalog; activity and recommendations are paused.");
+    }
+  } else {
+    showStoreAlert("Offline preview: this page uses sample products and on-device demo recommendations.");
+  }
+  if (document.body.dataset.page === "home") renderHome();
+  if (document.body.dataset.page === "product") renderProductPage();
+  if (document.body.dataset.page === "cart") renderCart();
+}
+
+void initializeStore();

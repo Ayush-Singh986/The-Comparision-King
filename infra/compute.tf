@@ -69,18 +69,20 @@ resource "aws_launch_template" "app" {
   image_id               = data.aws_ami.amazon_linux.id
   instance_type          = var.instance_type
   update_default_version = true
+  depends_on             = [aws_secretsmanager_secret_version.order_webhook]
   user_data = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
-    artifact_bucket       = aws_s3_bucket.artifacts.id
-    artifact_key          = aws_s3_object.application.key
-    aws_region            = var.aws_region
-    bedrock_model_id      = var.bedrock_model_id
-    db_host               = aws_db_instance.main.address
-    db_master_secret_arn  = aws_db_instance.main.master_user_secret[0].secret_arn
-    db_app_secret_arn     = aws_secretsmanager_secret.application_db.arn
-    metrics_lambda_arn    = aws_lambda_function.metrics.arn
-    project_name          = var.project_name
-    cognito_user_pool_id  = aws_cognito_user_pool.main.id
-    cognito_app_client_id = aws_cognito_user_pool_client.web.id
+    artifact_bucket          = aws_s3_bucket.artifacts.id
+    artifact_key             = aws_s3_object.application.key
+    aws_region               = var.aws_region
+    bedrock_model_id         = var.bedrock_model_id
+    db_host                  = aws_db_instance.main.address
+    db_master_secret_arn     = aws_db_instance.main.master_user_secret[0].secret_arn
+    db_app_secret_arn        = aws_secretsmanager_secret.application_db.arn
+    order_webhook_secret_arn = aws_secretsmanager_secret.order_webhook.arn
+    metrics_lambda_arn       = aws_lambda_function.metrics.arn
+    project_name             = var.project_name
+    cognito_user_pool_id     = aws_cognito_user_pool.main.id
+    cognito_app_client_id    = aws_cognito_user_pool_client.web.id
     config_json = jsonencode({
       apiBaseUrl    = ""
       awsRegion     = var.aws_region
@@ -90,6 +92,7 @@ resource "aws_launch_template" "app" {
       redirectUri   = "https://${aws_cloudfront_distribution.app.domain_name}/dashboard.html"
       sampleMode    = false
     })
+    store_session_cookie_secure = "true"
   }))
 
   iam_instance_profile {
@@ -169,6 +172,7 @@ resource "aws_autoscaling_policy" "cpu" {
 resource "aws_cloudfront_distribution" "app" {
   enabled             = true
   comment             = "Northstar Commerce dashboard"
+  web_acl_id          = aws_wafv2_web_acl.storefront.arn
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
   http_version        = "http2and3"
